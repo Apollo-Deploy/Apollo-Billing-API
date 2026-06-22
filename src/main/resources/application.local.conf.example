@@ -1,0 +1,27 @@
+include "application.conf"
+
+apollo-billing {
+    environment = "development"
+
+    service-auth {
+        jwt-secret = "dev-service-jwt-secret-change-me"
+        audience = "apollo-billing"
+        allowed-issuers = "apollo-signal-api,local-dev"
+        max-token-age-seconds = 300
+        clock-skew-seconds = 30
+    }
+
+    polar {
+        webhook-secret = "dev-webhook-secret"
+        api-key = ""
+    }
+
+    db {
+        host = "localhost"
+        port = 5432
+        name = "apollo"
+        user = "billing_app"
+        password = ""
+    }
+
+}

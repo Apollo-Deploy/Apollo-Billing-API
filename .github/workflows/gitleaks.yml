@@ -1,0 +1,38 @@
+name: Secret scan
+
+# Scan for committed secrets on PRs, pushes to main branches, and a weekly
+# scheduled full-history sweep. Uses gitleaks with the repo .gitleaks.toml.
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC — full-history sweep
+  workflow_dispatch:
+
+concurrency:
+  group: gitleaks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so PR diffs and the scheduled sweep can scan all commits.
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+          # GITLEAKS_LICENSE is only required for gitleaks-action in GitHub orgs.
+          # For personal/public repos it is optional; set it as a secret if your
+          # org account requires it.
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}

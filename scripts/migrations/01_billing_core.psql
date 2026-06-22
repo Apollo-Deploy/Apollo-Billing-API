@@ -1,0 +1,96 @@
+-- =============================================================================
+-- App:       apollo-billing-api
+-- Migration: 01_billing_core.psql
+--
+-- Creates the billing API's core tables within the shared apollo_deploy_platform
+-- database.
+--
+-- The billing API (Kotlin/Ktor) co-exists with the platform's billing schema
+-- but needs its own simpler Polar-focused tables:
+--
+--   billing_customers     — maps Polar customer IDs to our org IDs, per app.
+--   billing_subscriptions — tracks active Polar subscriptions per org/app.
+--
+-- New tables use the "billing_" prefix to avoid colliding with the
+-- platform's richer normalized tables (customers, subscriptions, plan_versions,
+-- etc.) that the platform Node.js service owns.
+--
+-- Both tables FK to platform_apps for the app_id so lookups can join
+-- by app slug without duplicating the app registry.
+-- =============================================================================
+
+BEGIN;
+
+-- ---------------------------------------------------------------------------
+-- billing_customers
+-- Maps each (app, org) pair to its Polar customer record.
+-- external_ref is our org ID (matches platform_apps usage throughout).
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS billing_customers (
+    app_id       uuid         NOT NULL
+        REFERENCES platform_apps (id) ON DELETE RESTRICT,
+    customer_id  varchar(255) NOT NULL,          -- Polar customer ID
+    external_ref text         NOT NULL,          -- our org ID
+    email        text,
+    created_at   timestamptz  NOT NULL DEFAULT now(),
+    updated_at   timestamptz  NOT NULL DEFAULT now(),
+    -- ON CONFLICT (app_id, external_ref) used by billing API upserts
+    PRIMARY KEY  (app_id, external_ref)
+) WITH (fillfactor = 85);
+
+CREATE INDEX IF NOT EXISTS idx_billing_customers_app_customer_id
+    ON billing_customers (app_id, customer_id);
+
+COMMENT ON TABLE billing_customers IS
+    'Polar customer registry per app/org. Owned by apollo-billing-api.';
+
+COMMENT ON COLUMN billing_customers.customer_id IS
+    'Polar-assigned customer ID (e.g. "pol_cu_xxx"). Not a UUID — stored as varchar.';
+
+COMMENT ON COLUMN billing_customers.external_ref IS
+    'Our organisation ID, used as the Polar externalId on customer creation.';
+
+-- ---------------------------------------------------------------------------
+-- billing_subscriptions
+-- Tracks active/historical Polar subscriptions.
+-- Joined to billing_customers via (app_id, customer_id) pair.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS billing_subscriptions (
+    app_id                uuid         NOT NULL
+        REFERENCES platform_apps (id) ON DELETE RESTRICT,
+    customer_id           varchar(255) NOT NULL, -- Polar customer ID (FK-by-value to billing_customers)
+    polar_subscription_id varchar(255) NOT NULL, -- Polar subscription ID — unique upsert key
+    polar_product_id      varchar(255) NOT NULL,
+    status                text         NOT NULL
+        CHECK (status IN ('active', 'trialing', 'past_due', 'canceled', 'paused', 'incomplete')),
+    quantity              int          NOT NULL DEFAULT 1
+        CHECK (quantity >= 0),
+    created_at            timestamptz  NOT NULL DEFAULT now(),
+    updated_at            timestamptz  NOT NULL DEFAULT now(),
+    -- ON CONFLICT (polar_subscription_id) used by billing API upserts
+    PRIMARY KEY (polar_subscription_id)
+) WITH (fillfactor = 70);
+
+CREATE INDEX IF NOT EXISTS idx_billing_subscriptions_app_customer
+    ON billing_subscriptions (app_id, customer_id);
+
+CREATE INDEX IF NOT EXISTS idx_billing_subscriptions_app_product_status
+    ON billing_subscriptions (app_id, polar_product_id, status)
+    WHERE status IN ('active', 'trialing', 'past_due');
+
+CREATE INDEX IF NOT EXISTS idx_billing_subscriptions_created_at
+    ON billing_subscriptions (app_id, created_at DESC);
+
+COMMENT ON TABLE billing_subscriptions IS
+    'Polar subscription registry per app/org. Owned by apollo-billing-api.';
+
+COMMENT ON COLUMN billing_subscriptions.customer_id IS
+    'Polar customer ID — value reference to billing_customers.customer_id.';
+
+COMMENT ON COLUMN billing_subscriptions.polar_subscription_id IS
+    'Polar-assigned subscription ID. Used as the primary upsert key.';
+
+COMMENT ON COLUMN billing_subscriptions.quantity IS
+    'Subscription seat/unit quantity. Relevant for per-seat add-ons. Defaults to 1.';
+
+COMMIT;

@@ -1,0 +1,28 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+
+[*.{kt,kts}]
+indent_size = 4
+max_line_length = off
+
+# ktlint configuration
+# Wildcard imports are idiomatic for Ktor (io.ktor.server.routing.*, etc.)
+# and are used throughout this codebase, so disable the rule.
+ktlint_standard_no-wildcard-imports = disabled
+# The official Kotlin style and Ktor route DSL frequently exceed the default
+# import-ordering and max-line rules; keep the high-signal rules and relax noise.
+ktlint_standard_filename = disabled
+# SQL statements are held in SCREAMING_SNAKE_CASE `val`s by convention.
+ktlint_standard_property-naming = disabled
+
+[*.{yml,yaml,json}]
+indent_size = 2
+
+[Makefile]
+indent_style = tab

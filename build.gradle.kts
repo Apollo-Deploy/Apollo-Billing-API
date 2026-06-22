@@ -1,0 +1,114 @@
+plugins {
+    kotlin("jvm") version "2.1.21"
+    kotlin("plugin.serialization") version "2.1.21"
+    id("io.ktor.plugin") version "3.1.1"
+    id("com.gradleup.shadow") version "9.4.2"
+    id("org.jlleitschuh.gradle.ktlint") version "12.1.2"
+    application
+}
+
+group = "com.apollodeploy.billing"
+version = "1.0.0"
+
+application {
+    mainClass.set("com.apollodeploy.billing.BillingApplicationKt")
+}
+
+kotlin {
+    jvmToolchain(21)
+    compilerOptions {
+        freeCompilerArgs.addAll("-Xjsr305=strict")
+        optIn.set(
+            listOf(
+                "kotlinx.coroutines.ExperimentalCoroutinesApi",
+                "kotlinx.serialization.ExperimentalSerializationApi",
+            ),
+        )
+    }
+}
+
+dependencies {
+    val ktorVersion = "3.1.1"
+
+    // Ktor Server
+    implementation("io.ktor:ktor-server-core:$ktorVersion")
+    implementation("io.ktor:ktor-server-netty:$ktorVersion")
+    implementation("io.ktor:ktor-server-content-negotiation:$ktorVersion")
+    implementation("io.ktor:ktor-server-status-pages:$ktorVersion")
+    implementation("io.ktor:ktor-server-call-logging:$ktorVersion")
+    implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")
+
+    // OpenAPI / Scalar docs + Tesseract SDK generation
+    implementation("io.github.smiley4:ktor-openapi:5.7.0")
+    implementation(kotlin("reflect"))
+
+    // Ktor Client (for Polar API calls)
+    implementation("io.ktor:ktor-client-core:$ktorVersion")
+    implementation("io.ktor:ktor-client-cio:$ktorVersion")
+    implementation("io.ktor:ktor-client-content-negotiation:$ktorVersion")
+
+    // KotlinX
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.0")
+
+    // Database
+    implementation("com.zaxxer:HikariCP:6.2.1")
+    implementation("org.postgresql:postgresql:42.7.7")
+
+    // Configuration
+    implementation("com.typesafe:config:1.4.3")
+
+    // Logging
+    implementation("org.slf4j:slf4j-api:2.0.17")
+    implementation("ch.qos.logback:logback-classic:1.5.17")
+    implementation("net.logstash.logback:logstash-logback-encoder:8.0")
+
+    // Testing
+    testImplementation(kotlin("test"))
+    testImplementation("io.kotest:kotest-runner-junit5:5.9.1")
+    testImplementation("io.kotest:kotest-assertions-core:5.9.1")
+    testImplementation("io.ktor:ktor-server-test-host:$ktorVersion")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.1")
+    testImplementation("io.mockk:mockk:1.14.2")
+    testImplementation("io.kotest:kotest-property:5.9.1")
+    testImplementation("org.testcontainers:testcontainers:1.20.5")
+    testImplementation("org.testcontainers:postgresql:1.20.5")
+}
+
+// Load .env into the run task so the Gradle daemon environment doesn't matter.
+fun loadDotEnv(): Map<String, String> {
+    val envFile = rootProject.file(".env")
+    if (!envFile.exists()) return emptyMap()
+    return envFile
+        .readLines()
+        .filter { it.isNotBlank() && !it.startsWith("#") }
+        .mapNotNull { line ->
+            val idx = line.indexOf('=')
+            if (idx <= 0) null else line.substring(0, idx).trim() to line.substring(idx + 1).trim()
+        }.toMap()
+}
+
+tasks.named<JavaExec>("run") {
+    environment(loadDotEnv())
+}
+
+tasks.test {
+    useJUnitPlatform()
+    environment(loadDotEnv())
+}
+
+tasks.shadowJar {
+    archiveClassifier.set("")
+    mergeServiceFiles()
+    manifest {
+        attributes["Main-Class"] = application.mainClass.get()
+    }
+}
+
+ktlint {
+    version.set("1.5.0")
+    ignoreFailures.set(false)
+    filter {
+        exclude { entry -> entry.file.path.contains("/build/") }
+    }
+}

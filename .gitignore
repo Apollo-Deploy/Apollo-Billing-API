@@ -1,0 +1,45 @@
+# ── Secrets / local config ───────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# Local Ktor config override (copy of application.local.conf.example)
+src/main/resources/application.local.conf
+src/test/resources/application.local.conf
+
+# ── Gradle / build ───────────────────────────────────────────────────────────
+.gradle/
+build/
+bin/
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+
+# Gradle configuration cache
+.cache/
+.configuration-cache/
+
+# ── Kotlin ───────────────────────────────────────────────────────────────────
+.kotlin/
+*.class
+
+# ── Generated SDKs ───────────────────────────────────────────────────────────
+sdk/
+
+# ── Generated OpenAPI spec ───────────────────────────────────────────────────
+docs/openapi.json
+
+# ── nginx TLS material ───────────────────────────────────────────────────────
+nginx/certs/*
+!nginx/certs/.gitkeep
+
+# ── OS / editor ──────────────────────────────────────────────────────────────
+.DS_Store
+**/.DS_Store
+*.log
+.idea/
+*.iml
+.vscode/
+
+# ── Test output ──────────────────────────────────────────────────────────────
+build/reports/
+build/test-results/

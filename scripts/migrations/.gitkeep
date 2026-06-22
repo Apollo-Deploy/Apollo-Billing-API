@@ -1,0 +1,5 @@
+# Place .psql migration files here, numbered sequentially:
+# 01_billing_init.psql
+# 02_billing_something.psql
+# ...
+# run-migrations.sh applies them in sorted order via psql inside the postgres container.
