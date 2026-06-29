@@ -27,14 +27,22 @@ data class AppEntitlements(
 
 data class BillingConfig(
     val appSlug: String,
-    val resolvePlan: suspend (orgId: String) -> PlanResolution,
-    val resolveUsage: suspend (orgId: String) -> Map<String, Int>,
+    val resolvePlanAndUsage: suspend (orgId: String) -> PlanAndUsageResolution,
     val cacheTtlMs: Long = 5_000,
 )
 
 data class PlanResolution(
     val planId: String,
     val config: PlanFeatureConfig,
+)
+
+/**
+ * Combined plan + usage resolution result.
+ * Allows a single DB round-trip to resolve both plan and usage.
+ */
+data class PlanAndUsageResolution(
+    val plan: PlanResolution,
+    val usage: Map<String, Int>,
 )
 
 // ─── Billing errors ──────────────────────────────────────────────────────────
@@ -56,3 +64,7 @@ class SubscriptionNotFoundError(
     val orgId: String,
     val appSlug: String,
 ) : RuntimeException("No active subscription found for org \"$orgId\" on app \"$appSlug\"")
+
+class SignalDbUnavailableError(
+    val orgId: String,
+) : RuntimeException("Signal database is unavailable — cannot resolve usage for org \"$orgId\". Refusing to fail-open.")
