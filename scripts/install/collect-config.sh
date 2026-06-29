@@ -60,7 +60,7 @@ _prompt() {
   fi
 
   [[ -z "$val" ]] && val="$default"
-  set_env_value "$key" "$val"
+  env_set "$key" "$val"
 
   # Zeroize from memory where possible
   val=""
@@ -124,10 +124,10 @@ if [[ $_first_run -eq 1 ]]; then
   read -r -s -p "  Polar webhook secret  (blank = auto-generate): " _webhook_val
   echo ""
   if [[ -z "$_webhook_val" ]]; then
-    _webhook_val="$(generate_hex_secret 32)"
-    info "Auto-generated POLAR_WEBHOOK_SECRET"
+    _webhook_val="$(gen_secret)"
+    log_info "Auto-generated POLAR_WEBHOOK_SECRET"
   fi
-  set_env_value POLAR_WEBHOOK_SECRET "$_webhook_val"
+  env_set POLAR_WEBHOOK_SECRET "$_webhook_val"
   _webhook_val=""
 fi
 
@@ -149,7 +149,7 @@ if [[ $_first_run -eq 1 ]]; then
 fi
 
 echo ""
-success "Configuration written to .env"
+log_success "Configuration written to .env"
 
 # ---------------------------------------------------------------------------
 # Cleanup

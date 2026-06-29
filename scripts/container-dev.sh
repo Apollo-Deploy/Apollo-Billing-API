@@ -185,23 +185,24 @@ docker_compose_cmd() {
 }
 
 docker_build() {
-  info "Building billing image with Docker..."
-  docker build -t "$IMAGE_NAME" "$ROOT_DIR"
-  ok "Built: $IMAGE_NAME"
+  local dc
+  dc="$(docker_compose_cmd)"
+  info "Building billing image with Docker Compose..."
+  $dc -f "$ROOT_DIR/docker-compose.yml" build billing
+  ok "Built billing image."
 }
 
 docker_run() {
   local dc
   dc="$(docker_compose_cmd)"
-  $dc -f "$ROOT_DIR/docker-compose.yml" up -d
+  $dc -f "$ROOT_DIR/docker-compose.yml" up -d --build
   ok "Billing started via Docker Compose."
 }
 
 docker_run_dev() {
   local dc
   dc="$(docker_compose_cmd)"
-  # Use dev profile or set environment override
-  APOLLO_BILLING_ENV=development $dc -f "$ROOT_DIR/docker-compose.yml" up -d
+  APOLLO_BILLING_ENV=development $dc -f "$ROOT_DIR/docker-compose.yml" up -d --build
   ok "Billing (dev) started via Docker Compose."
 }
 

@@ -5,13 +5,13 @@
 
 echo "${_group}Setup complete ..."
 
-BIND=$(get_env_value BILLING_BIND)
+BIND=$(env_get BILLING_BIND)
 BIND="${BIND:-0.0.0.0:443}"
 PORT="${BIND##*:}"
 
-POLAR_KEY=$(get_env_value POLAR_API_KEY)
-POLAR_WEBHOOK=$(get_env_value POLAR_WEBHOOK_SECRET)
-PLATFORM_NETWORK=$(get_env_value PLATFORM_NETWORK)
+POLAR_KEY=$(env_get POLAR_API_KEY)
+POLAR_WEBHOOK=$(env_get POLAR_WEBHOOK_SECRET)
+PLATFORM_NETWORK=$(env_get PLATFORM_NETWORK)
 
 echo ""
 echo "  ┌─────────────────────────────────────────────────────────────┐"

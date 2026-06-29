@@ -12,18 +12,18 @@ _generate_if_placeholder() {
   local key="$1"
   local generator="${2:-hex}"
   local current
-  current=$(get_env_value "$key")
+  current=$(env_get "$key")
 
   if [[ -z "$current" || "$current" == *"$PLACEHOLDER_PATTERN"* || "$current" == *"changeme"* ]]; then
     local value
     case "$generator" in
-      secret) value=$(generate_secret 32) ;;
-      *)      value=$(generate_hex_secret 32) ;;
+      b64) value=$(gen_secret_b64 32) ;;
+      *)   value=$(gen_secret) ;;
     esac
-    set_env_value "$key" "$value"
-    info "Generated ${key}"
+    env_set "$key" "$value"
+    log_info "Generated ${key}"
   else
-    info "${key} already set — skipping."
+    log_info "${key} already set — skipping."
   fi
 }
 
@@ -31,7 +31,7 @@ _generate_if_placeholder() {
 # All other secrets (PLATFORM_DB_PASSWORD, BILLING_SUPERUSER_PASSWORD,
 # REDIS_PASSWORD, SERVICE_AUTH_SECRET) are set by the platform installer
 # and must be copied — not auto-generated.
-_generate_if_placeholder POLAR_WEBHOOK_SECRET "hex"
+_generate_if_placeholder POLAR_WEBHOOK_SECRET
 
-success "Secrets ready"
+log_success "Secrets ready"
 echo "${_endgroup}"

@@ -9,7 +9,7 @@
         sdk sdk-ts sdk-java \
         sdk-publish sdk-publish-java sdk-publish-ts sdk-upload \
         sdk-codeartifact sdk-manifest require-sdk-version \
-        openapi polar-sandbox provision-reader help
+        openapi polar-sandbox polar-production provision-reader help
 
 # Use Java 21 to avoid Kotlin/Gradle incompatibility with Java 25
 export JAVA_HOME := /opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
@@ -26,9 +26,6 @@ SDK_VERSION        ?=
 # Load .env if present (silently skipped when absent; all vars exported to sub-makes)
 -include .env
 export
-
-PLATFORM_DB_NAME ?= apollo_deploy_platform
-PLATFORM_DB_USER ?= billing_app
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Build
@@ -171,19 +168,7 @@ debug-net:
 
 ## migrate        : Apply pending SQL migrations from scripts/migrations/
 migrate:
-	@echo "Applying migrations in apollo-platform-postgres as $(PLATFORM_DB_USER)@$(PLATFORM_DB_NAME)..."
-	@count=0; \
-	for f in $$(ls scripts/migrations/*.psql 2>/dev/null | sort); do \
-		echo "  Applying $$f..."; \
-		docker exec -i \
-			-e PGPASSWORD="$$(grep -E '^PLATFORM_DB_PASSWORD=' .env | cut -d= -f2-)" \
-			apollo-platform-postgres \
-			psql -U "$(PLATFORM_DB_USER)" -d "$(PLATFORM_DB_NAME)" -v ON_ERROR_STOP=1 \
-			< "$$f" \
-			|| { echo "Migration failed: $$f"; exit 1; }; \
-		count=$$((count+1)); \
-	done; \
-	if [ $$count -eq 0 ]; then echo "No migrations found."; else echo "$$count migration(s) applied."; fi
+	./scripts/migrate.sh
 
 ## db-connect     : Open a psql shell to the platform Postgres (port-mapped to localhost)
 db-connect:
@@ -259,7 +244,11 @@ openapi:
 
 ## polar-sandbox  : Create/update Signal products, meters, and benefits in Polar sandbox
 polar-sandbox:
-	scripts/polar/setup-signal-sandbox.sh
+	scripts/polar/setup-signal.sh --env sandbox --setup both
+
+## polar-production : Create/update Signal products, meters, and benefits in Polar production
+polar-production:
+	scripts/polar/setup-signal.sh --env production --setup both
 
 ## help           : List all targets with descriptions
 help:

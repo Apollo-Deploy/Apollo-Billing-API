@@ -30,27 +30,38 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/scripts/install" && pwd)"
 
 # ---------------------------------------------------------------------------
-# Bootstrap logging first — it sets up tee to the log file
+# Bootstrap: logging → lib → db helpers
 # ---------------------------------------------------------------------------
+# shellcheck source=scripts/install/_logging.sh
 source "${SCRIPT_DIR}/_logging.sh"
 
-# Shared utilities (env loading, helpers, trap_with_arg)
+# shellcheck source=scripts/install/_lib.sh
 source "${SCRIPT_DIR}/_lib.sh"
+
+# shellcheck source=scripts/install/_db.sh
+source "${SCRIPT_DIR}/_db.sh"
+
+# Tee all subsequent output to a timestamped log file (install.sh only —
+# not sourced by day-to-day tools like `make migrate`).
+log_to_file "apollo_billing_install"
 
 # Parse CLI flags — sets NON_INTERACTIVE, SKIP_BUILD, SKIP_MIGRATIONS
 source "${SCRIPT_DIR}/parse-cli.sh" "$@"
 
-# Register the error/signal trap now that helpers are loaded
-trap_with_arg cleanup ERR INT TERM EXIT
+# Error trap
+cleanup() {
+  local retcode=$?
+  [[ $retcode -eq 0 ]] && return 0
+  set +o xtrace
+  log_error "Installation failed (exit ${retcode}) while running: ${BASH_COMMAND}"
+  log_detail "Check the log file for details: ${log_file:-apollo_billing_install.log}"
+}
+trap cleanup ERR
 
 # ---------------------------------------------------------------------------
 # Banner
 # ---------------------------------------------------------------------------
-echo ""
-echo "================================================================"
-echo "       Apollo Billing — Service Installer"
-echo "================================================================"
-echo ""
+log_banner "Apollo Billing — Service Installer"
 
 # ---------------------------------------------------------------------------
 # Pre-flight (no side effects)
@@ -72,7 +83,7 @@ source "${SCRIPT_DIR}/create-volumes.sh"
 # Build
 # ---------------------------------------------------------------------------
 if [[ "${SKIP_BUILD}" == "1" ]]; then
-  echo "  Skipping Docker image build (--skip-build)."
+  log_info "Skipping Docker image build (--skip-build)."
 else
   source "${SCRIPT_DIR}/build-images.sh"
 fi
@@ -81,7 +92,7 @@ fi
 # Migrations
 # ---------------------------------------------------------------------------
 if [[ "${SKIP_MIGRATIONS}" == "1" ]]; then
-  echo "  Skipping database migrations (--skip-migrations)."
+  log_info "Skipping database migrations (--skip-migrations)."
 else
   source "${SCRIPT_DIR}/run-migrations.sh"
 fi

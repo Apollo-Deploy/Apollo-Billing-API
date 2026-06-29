@@ -13,11 +13,11 @@ echo "${_group}Checking environment file ..."
 
 if [[ ! -f .env ]]; then
   if [[ ! -f .env.example ]]; then
-    error ".env.example not found. Cannot create .env."
+    log_error ".env.example not found. Cannot create .env."
     exit 1
   fi
 
-  info "No .env found — copying from .env.example"
+  log_info "No .env found — copying from .env.example"
   cp .env.example .env
 fi
 
@@ -35,7 +35,7 @@ _REQUIRED_KEYS=(
 _missing_keys=()
 for _entry in "${_REQUIRED_KEYS[@]}"; do
   _key="${_entry%%|*}"
-  if [[ -z "$(get_env_value "$_key")" ]]; then
+  if [[ -z "$(env_get "$_key")" ]]; then
     _missing_keys+=("$_entry")
   fi
 done
@@ -45,11 +45,11 @@ done
 # ---------------------------------------------------------------------------
 if [[ ${#_missing_keys[@]} -gt 0 ]]; then
   if [[ "${NON_INTERACTIVE:-0}" == "1" ]]; then
-    error "The following required values are not set in .env:"
+    log_error "The following required values are not set in .env:"
     for _entry in "${_missing_keys[@]}"; do
       _key="${_entry%%|*}"
       _hint="${_entry#*|}"
-      error "  ${_key}  —  copy ${_hint}"
+      log_error "  ${_key}  —  copy ${_hint}"
     done
     exit 1
   fi
@@ -58,5 +58,5 @@ if [[ ${#_missing_keys[@]} -gt 0 ]]; then
   source "${SCRIPT_DIR}/collect-config.sh" "${_missing_keys[@]}"
 fi
 
-success ".env is present and all required values are set"
+log_success ".env is present and all required values are set"
 echo "${_endgroup}"
