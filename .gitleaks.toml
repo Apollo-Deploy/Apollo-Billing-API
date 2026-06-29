@@ -1,0 +1,51 @@
+# gitleaks configuration for apollo-billing-api
+# Extends the upstream default ruleset and adds project-specific allowlisting.
+# Docs: https://github.com/gitleaks/gitleaks
+
+[extend]
+# Inherit gitleaks' built-in detectors (AWS keys, npm tokens, JWTs, PEM keys, …).
+useDefault = true
+
+# Custom rule: catch any of the project's required secret env vars being given a
+# real (non-empty, non-placeholder) value in a committed file. Placeholders and
+# the .env.example template are allowlisted below.
+[[rules]]
+id = "apollo-billing-env-secret"
+description = "Populated Apollo Billing secret in a committed env/config file"
+regex = '''(?i)\b(PLATFORM_DB_PASSWORD|BILLING_SUPERUSER_PASSWORD|REDIS_PASSWORD|SERVICE_AUTH_SECRET|POLAR_API_KEY|POLAR_WEBHOOK_SECRET|NPM_TOKEN|MAVEN_REPOSITORY_PASSWORD)\s*[=:]\s*["']?([A-Za-z0-9+/_.~-]{8,})["']?'''
+secretGroup = 2
+keywords = [
+  "PLATFORM_DB_PASSWORD",
+  "BILLING_SUPERUSER_PASSWORD",
+  "REDIS_PASSWORD",
+  "SERVICE_AUTH_SECRET",
+  "POLAR_API_KEY",
+  "POLAR_WEBHOOK_SECRET",
+  "NPM_TOKEN",
+  "MAVEN_REPOSITORY_PASSWORD",
+]
+
+[allowlist]
+description = "Allowlisted paths and placeholder values"
+
+# Never scan generated SDKs, build output, the documented template, or files that
+# only ever contain env-var *references* (compose interpolation, shell scripts,
+# CI workflows) rather than literal secrets.
+paths = [
+  '''\.env\.example$''',
+  '''(^|/)build/''',
+  '''(^|/)sdk/''',
+  '''(^|/)gradle/wrapper/''',
+  '''docker-compose\.ya?ml$''',
+  '''(^|/)scripts/.*\.sh$''',
+  '''(^|/)\.github/''',
+]
+
+# Placeholder / example / interpolated values that are safe even next to a key.
+regexes = [
+  '''(?i)(your[-_ ]?|example[-_ ]?|changeme|placeholder|redacted|xxx+|<[^>]+>)''',
+  # Shell / compose interpolation: ${VAR}, ${VAR:?...}, ${VAR:-default}.
+  '''\$\{?[A-Za-z_][A-Za-z0-9_]*''',
+  # CI build-time dummy values used by the SDK publish workflow.
+  '''(?i)ci[-_]?(build[-_]?)?(secret|pw)''',
+]
