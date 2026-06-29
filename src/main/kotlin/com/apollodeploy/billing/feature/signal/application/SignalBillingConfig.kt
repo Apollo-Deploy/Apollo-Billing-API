@@ -6,20 +6,28 @@ import com.apollodeploy.billing.core.BillingConfig
 import com.apollodeploy.billing.core.BillingEnforcer
 import com.apollodeploy.billing.core.BillingProduct
 import com.apollodeploy.billing.core.BillingProductKind
+import com.apollodeploy.billing.core.PlanAndUsageResolution
 import com.apollodeploy.billing.core.PlanFeatureConfig
 import com.apollodeploy.billing.core.PlanResolution
+import com.apollodeploy.billing.core.SignalDbUnavailableError
 import com.apollodeploy.billing.core.toBillingProductKind
 import com.apollodeploy.billing.feature.signal.domain.PlanEntitlements
 import com.apollodeploy.billing.feature.signal.domain.SIGNAL_AI_CREDIT_METER_ID
 import com.apollodeploy.billing.feature.signal.domain.SIGNAL_AUTOMATION_RUN_METER_ID
 import com.apollodeploy.billing.feature.signal.domain.SIGNAL_EMAIL_METER_ID
+import com.apollodeploy.billing.feature.signal.domain.SIGNAL_MMS_MESSAGE_METER_ID
+import com.apollodeploy.billing.feature.signal.domain.SIGNAL_SMS_SEGMENT_METER_ID
+import com.apollodeploy.billing.feature.signal.domain.SMS_NO_ADDON_ENTITLEMENTS
 import com.apollodeploy.billing.feature.signal.domain.isDedicatedIpEligibleForPlan
 import com.apollodeploy.billing.feature.signal.domain.isMultiRegionAllowedForPlan
 import com.apollodeploy.billing.feature.signal.domain.signalCatalogProducts
 import com.apollodeploy.billing.feature.signal.domain.signalDedicatedIpAddOn
 import com.apollodeploy.billing.feature.signal.domain.signalFindPlanByProductId
+import com.apollodeploy.billing.feature.signal.domain.signalFindSmsPlanByProductId
 import com.apollodeploy.billing.feature.signal.domain.signalGetFreePlan
 import com.apollodeploy.billing.feature.signal.domain.signalPlans
+import com.apollodeploy.billing.feature.signal.domain.signalSmsPlans
+import com.apollodeploy.billing.feature.signal.domain.toFeatureMap
 import com.apollodeploy.billing.infrastructure.persistence.DatabasePool
 import com.apollodeploy.billing.infrastructure.persistence.SubscriptionRepo
 import com.apollodeploy.billing.infrastructure.persistence.prepareAndQuery
@@ -29,10 +37,12 @@ import com.apollodeploy.billing.infrastructure.polar.PolarClient
  * Apollo Billing — Signal app billing configuration.
  *
  * Owns the plan resolution and usage SQL for the Signal app.
- * Ported from apollo-signal-api infrastructure/billing/SignalBillingResolver.kt.
  *
- * resolvePlan  → queries subscriptions table (platform DB)
- * resolveUsage → queries signal's own tables (same platform DB)
+ * Database efficiency: resolves ALL billing state in exactly 2 DB round-trips:
+ *   1. Platform DB (billing_superuser): subscriptions + API key count (single CTE query)
+ *   2. Signal DB (billing_superuser): projects, domains, webhooks, daily sends
+ *
+ * Meter balances come from Polar (via Redis-cached PolarStateCache) — no DB call.
  */
 class SignalBillingConfig(
     private val db: DatabasePool,
@@ -40,6 +50,7 @@ class SignalBillingConfig(
     private val signalDb: DatabasePool?,
     private val subscriptionRepo: SubscriptionRepo,
     private val polarClient: PolarClient,
+    private val polarStateCache: com.apollodeploy.billing.infrastructure.redis.PolarStateCache? = null,
 ) {
     companion object {
         const val APP_SLUG = "signal"
@@ -48,11 +59,91 @@ class SignalBillingConfig(
     private val basePlanProductIds: List<String> =
         signalPlans.map { it.polarProductId }.filter { it.isNotBlank() }
 
-    // ─── Usage resolution SQL ─────────────────────────────────────────────────
+    private val smsProductIds: List<String> =
+        signalSmsPlans.map { it.polarProductId }.filter { it.isNotBlank() }
 
-    // Queries against the Signal database (signalDb).
-    // dailySends comes from organization_usage_daily so per-send entitlement
-    // lookups do not count today's emails repeatedly.
+    private val dedicatedIpProductId: String =
+        signalDedicatedIpAddOn.polarProductId
+
+    // ─── Consolidated SQL ─────────────────────────────────────────────────────
+
+    /**
+     * Single platform DB query that resolves ALL subscription state + API key count.
+     *
+     * Returns in one round-trip:
+     *   - Active base plan product ID (newest)
+     *   - Active SMS add-on product ID (newest)
+     *   - Dedicated IP add-on quantity (sum of active)
+     *   - API key count
+     *
+     * Uses billing_superuser role (read-only) since it needs access to both
+     * billing_subscriptions AND apikey tables.
+     */
+    private fun buildPlatformQuery(): String {
+        val basePlanPlaceholders = basePlanProductIds.joinToString(",") { "?" }
+        val smsPlaceholders = smsProductIds.joinToString(",") { "?" }
+
+        return """
+            WITH base_plan AS (
+                SELECT s.polar_product_id
+                FROM billing_subscriptions s
+                JOIN billing_customers c ON c.app_id = s.app_id AND c.customer_id = s.customer_id
+                JOIN platform_apps a ON a.id = s.app_id
+                WHERE a.slug = ?
+                  AND c.external_ref = ?
+                  AND s.polar_product_id IN ($basePlanPlaceholders)
+                  AND s.status IN ('active', 'trialing', 'past_due')
+                ORDER BY s.created_at DESC
+                LIMIT 1
+            ),
+            sms_plan AS (
+                SELECT s.polar_product_id
+                FROM billing_subscriptions s
+                JOIN billing_customers c ON c.app_id = s.app_id AND c.customer_id = s.customer_id
+                JOIN platform_apps a ON a.id = s.app_id
+                WHERE a.slug = ?
+                  AND c.external_ref = ?
+                  AND s.polar_product_id IN ($smsPlaceholders)
+                  AND s.status IN ('active', 'trialing', 'past_due')
+                ORDER BY s.created_at DESC
+                LIMIT 1
+            ),
+            dedicated_ip AS (
+                SELECT COALESCE(SUM(GREATEST(COALESCE(s.quantity, 1), 0)), 0)::int AS cnt
+                FROM billing_subscriptions s
+                JOIN billing_customers c ON c.app_id = s.app_id AND c.customer_id = s.customer_id
+                JOIN platform_apps a ON a.id = s.app_id
+                WHERE a.slug = ?
+                  AND c.external_ref = ?
+                  AND s.polar_product_id = ?
+                  AND s.status IN ('active', 'trialing', 'past_due')
+            ),
+            api_keys AS (
+                SELECT COUNT(*)::int AS cnt
+                FROM apikey k
+                WHERE k."referenceId" = ?
+                  AND k."configId" = 'signal-keys'
+                  AND k.enabled = TRUE
+            )
+            SELECT
+                (SELECT polar_product_id FROM base_plan) AS "basePlanProductId",
+                (SELECT polar_product_id FROM sms_plan) AS "smsPlanProductId",
+                (SELECT cnt FROM dedicated_ip) AS "dedicatedIpQty",
+                (SELECT cnt FROM api_keys) AS "apiKeyCount"
+        """.trimIndent()
+    }
+
+    /**
+     * Signal DB query — resolves all usage counters in a single round-trip.
+     *
+     * Includes:
+     *   - projects (non-deleted)
+     *   - domains (verified)
+     *   - webhooks (active)
+     *   - daily email sends (from pre-aggregated usage table)
+     *   - active SMS senders (phone numbers with status 'active')
+     *   - daily SMS segments sent (for observability; enforcement uses Polar meters)
+     */
     private val SQL_SIGNAL_USAGE =
         """
         WITH
@@ -75,28 +166,35 @@ class SignalBillingConfig(
               WHERE organization_id = ?
                 AND usage_date = (now() AT TIME ZONE 'UTC')::date
             ), 0)::int AS cnt
+          ),
+          sms_senders_count AS (
+            SELECT COUNT(*)::int AS cnt FROM sms_senders
+            WHERE organization_id = ? AND status = 'active'
+          ),
+          daily_sms_segments AS (
+            SELECT COALESCE(SUM(segment_count), 0)::int AS cnt
+            FROM sms_messages
+            WHERE organization_id = ?
+              AND created_at >= (now() AT TIME ZONE 'UTC')::date
+              AND status NOT IN ('queued', 'scheduled')
           )
         SELECT
-          (SELECT cnt FROM projects_count) AS "maxProjects",
-          (SELECT cnt FROM domains_count)  AS "maxDomains",
-          (SELECT cnt FROM webhooks_count) AS "maxWebhooks",
-          (SELECT cnt FROM daily_sends)    AS "dailySends"
+          (SELECT cnt FROM projects_count)    AS "maxProjects",
+          (SELECT cnt FROM domains_count)     AS "maxDomains",
+          (SELECT cnt FROM webhooks_count)    AS "maxWebhooks",
+          (SELECT cnt FROM daily_sends)       AS "dailySends",
+          (SELECT cnt FROM sms_senders_count) AS "smsSenders",
+          (SELECT cnt FROM daily_sms_segments) AS "dailySmsSegments"
         """.trimIndent()
-    // Note: monthlySends is now sourced from the Polar email meter balance
-    // (emailSendBalance) rather than a COUNT(*) on the emails table.
-    // This means enforce checks always reflect the live Polar meter state and
-    // reportEmailSend() events are the single source of truth for monthly usage.
 
-    // Queries against the platform database via billing_superuser (read-only).
-    // apikey is granted SELECT to billing_superuser, not billing_app.
-    private val SQL_PLATFORM_API_KEY_COUNT =
-        """
-        SELECT COUNT(*)::int AS cnt
-        FROM apikey k
-        WHERE k."referenceId" = ?
-          AND k."configId" = 'signal-keys'
-          AND k.enabled = TRUE
-        """.trimIndent()
+    // ─── Platform state data class ────────────────────────────────────────────
+
+    private data class PlatformBillingState(
+        val basePlanProductId: String?,
+        val smsPlanProductId: String?,
+        val dedicatedIpQuantity: Int,
+        val apiKeyCount: Int,
+    )
 
     // ─── Public factory ───────────────────────────────────────────────────────
 
@@ -115,41 +213,124 @@ class SignalBillingConfig(
         BillingEnforcer(
             BillingConfig(
                 appSlug = APP_SLUG,
-                resolvePlan = { orgId -> resolvePlan(orgId) },
-                resolveUsage = { orgId -> resolveUsage(orgId) },
+                resolvePlanAndUsage = { orgId -> resolvePlanAndUsage(orgId) },
                 cacheTtlMs = 5_000,
             ),
         )
 
     // ─── Internal resolvers ────────────────────────────────────────────────
 
-    private fun resolvePlan(orgId: String): PlanResolution {
-        val plan =
-            subscriptionRepo
-                .findLatestActiveProductId(APP_SLUG, orgId, basePlanProductIds)
-                ?.let { signalFindPlanByProductId(it) }
-                ?: signalGetFreePlan() // No active subscription → free plan (signal-spark)
+    /**
+     * Fetches ALL platform billing state in a single DB round-trip.
+     * Uses billing_superuser role (read-only access to both billing_* and apikey).
+     */
+    private fun fetchPlatformState(orgId: String): PlatformBillingState {
+        val sql = buildPlatformQuery()
 
-        val baseConfig = plan.entitlements.toPlanFeatureConfig()
-        val dedicatedIpsEnabled = isDedicatedIpEligibleForPlan(plan.slug) && hasDedicatedIpAddOn(orgId)
-        return PlanResolution(
-            planId = plan.slug,
-            config =
-                baseConfig.copy(
-                    features =
-                        baseConfig.features +
-                            mapOf(
-                                "multiRegion" to isMultiRegionAllowedForPlan(plan.slug),
-                                "dedicatedIps" to dedicatedIpsEnabled,
-                            ),
-                ),
-        )
+        // Build params: appSlug, orgId for each CTE + dedicated IP product ID + orgId for apikey
+        val params = buildList {
+            // base_plan CTE: app_slug, org_id, ...product_ids
+            add(APP_SLUG); add(orgId)
+            addAll(basePlanProductIds)
+            // sms_plan CTE: app_slug, org_id, ...sms_product_ids
+            add(APP_SLUG); add(orgId)
+            addAll(smsProductIds)
+            // dedicated_ip CTE: app_slug, org_id, product_id
+            add(APP_SLUG); add(orgId); add(dedicatedIpProductId)
+            // api_keys CTE: org_id
+            add(orgId)
+        }
+
+        return platformReaderDb.withConnection { conn ->
+            conn.prepareAndQuery(sql, params) { rs ->
+                PlatformBillingState(
+                    basePlanProductId = rs.getString("basePlanProductId"),
+                    smsPlanProductId = rs.getString("smsPlanProductId"),
+                    dedicatedIpQuantity = rs.getInt("dedicatedIpQty"),
+                    apiKeyCount = rs.getInt("apiKeyCount"),
+                )
+            }.firstOrNull() ?: PlatformBillingState(null, null, 0, 0)
+        }
     }
 
-    private fun hasDedicatedIpAddOn(orgId: String): Boolean {
-        val productId = signalDedicatedIpAddOn.polarProductId
-        if (productId.isBlank()) return false
-        return subscriptionRepo.activeSubscriptionQuantity(APP_SLUG, orgId, productId) > 0
+    /**
+     * Combined plan + usage resolution.
+     *
+     * Total DB calls: 1 platform query + 1 signal query = 2 round-trips.
+     * (Previously this was 3 subscription queries + 1 apikey query + 1 signal query = 5.)
+     */
+    private suspend fun resolvePlanAndUsage(orgId: String): PlanAndUsageResolution {
+        // ── 1 query: Platform DB (subscriptions + API keys) ──────────────────
+        val state = fetchPlatformState(orgId)
+
+        val plan = state.basePlanProductId
+            ?.let { signalFindPlanByProductId(it) }
+            ?: signalGetFreePlan()
+
+        val baseConfig = plan.entitlements.toPlanFeatureConfig()
+        val dedicatedIpsEnabled = isDedicatedIpEligibleForPlan(plan.slug) && state.dedicatedIpQuantity > 0
+
+        val smsFeatures = if (state.smsPlanProductId != null) {
+            signalFindSmsPlanByProductId(state.smsPlanProductId)
+                ?.entitlements?.toFeatureMap()
+                ?: SMS_NO_ADDON_ENTITLEMENTS.toFeatureMap()
+        } else {
+            SMS_NO_ADDON_ENTITLEMENTS.toFeatureMap()
+        }
+
+        val planResolution = PlanResolution(
+            planId = plan.slug,
+            config = baseConfig.copy(
+                features = baseConfig.features +
+                    mapOf(
+                        "multiRegion" to isMultiRegionAllowedForPlan(plan.slug),
+                        "dedicatedIps" to dedicatedIpsEnabled,
+                    ) +
+                    smsFeatures,
+            ),
+        )
+
+        // ── 1 query: Signal DB (projects, domains, webhooks, daily sends, SMS senders) ────
+        val signalUsage =
+            if (signalDb != null) {
+                signalDb.withConnection { conn ->
+                    conn
+                        .prepareAndQuery(SQL_SIGNAL_USAGE, List(6) { orgId }) { rs ->
+                            mapOf(
+                                "maxProjects" to rs.getInt("maxProjects"),
+                                "maxDomains" to rs.getInt("maxDomains"),
+                                "maxWebhooks" to rs.getInt("maxWebhooks"),
+                                "dailySends" to rs.getInt("dailySends"),
+                                "smsSenders" to rs.getInt("smsSenders"),
+                                "dailySmsSegments" to rs.getInt("dailySmsSegments"),
+                            )
+                        }.firstOrNull() ?: emptyMap()
+                }
+            } else {
+                throw SignalDbUnavailableError(orgId)
+            }
+
+        // API key count came from the platform query — include it in usage
+        val dbUsage = signalUsage + mapOf("maxApiKeys" to state.apiKeyCount)
+
+        // ── Polar meter balances (via Redis-cached state, no DB) ─────────────
+        val customerState = polarStateCache?.getCustomerState(orgId)
+            ?: polarClient.getCustomerState(orgId)
+
+        fun meterBalance(meterId: String): Int? {
+            if (meterId.isBlank()) return null
+            return customerState?.activeMeters?.find { it.meterId == meterId }?.balance
+        }
+
+        val usage = dbUsage + buildMap {
+            meterBalance(SIGNAL_EMAIL_METER_ID)?.let { put("monthlySends", it) }
+            meterBalance(SIGNAL_AUTOMATION_RUN_METER_ID)?.let { put("automationRunBalance", it) }
+            meterBalance(SIGNAL_AI_CREDIT_METER_ID)?.let { put("aiCreditBalance", it) }
+            meterBalance(SIGNAL_SMS_SEGMENT_METER_ID)?.let { put("smsSegmentBalance", it) }
+            meterBalance(SIGNAL_MMS_MESSAGE_METER_ID)?.let { put("mmsMessageBalance", it) }
+        }
+
+        return PlanAndUsageResolution(plan = planResolution, usage = usage)
     }
 
     private fun billingProducts(): List<BillingProduct> =
@@ -218,62 +399,6 @@ class SignalBillingConfig(
                     )
                 }
         }
-
-    private suspend fun resolveUsage(orgId: String): Map<String, Int> {
-        // Signal DB: projects, domains, webhook_endpoints, organization_usage_daily.
-        val signalUsage =
-            signalDb?.withConnection { conn ->
-                conn
-                    .prepareAndQuery(SQL_SIGNAL_USAGE, List(4) { orgId }) { rs ->
-                        mapOf(
-                            "maxProjects" to rs.getInt("maxProjects"),
-                            "maxDomains" to rs.getInt("maxDomains"),
-                            "maxWebhooks" to rs.getInt("maxWebhooks"),
-                            "dailySends" to rs.getInt("dailySends"),
-                        )
-                    }.firstOrNull() ?: emptyMap()
-            } ?: emptyMap()
-
-        // Platform reader DB: apikey (billing_superuser — SELECT only)
-        val apiKeyCount =
-            platformReaderDb.withConnection { conn ->
-                conn
-                    .prepareAndQuery(SQL_PLATFORM_API_KEY_COUNT, listOf(orgId)) { rs ->
-                        rs.getInt("cnt")
-                    }.firstOrNull() ?: 0
-            }
-
-        val dbUsage = signalUsage + mapOf("maxApiKeys" to apiKeyCount)
-
-        // Meter balances come from Polar's Usage Meters, not our DB.
-        // Polar's Credits benefit automatically credits the relevant meter on
-        // subscription activation and one-time pack purchases. Usage events
-        // ingested via reportEmailSend / reportAutomationRun decrement the balance.
-        //
-        // Fail-open: if getCustomerState returns null (Polar unavailable), we omit
-        // meter balances from the map. BillingEnforcer.enforceMeter treats an
-        // absent key as unlimited, so customers are never blocked by a Polar outage.
-        val customerState = polarClient.getCustomerState(orgId)
-
-        fun meterBalance(meterId: String): Int? {
-            if (meterId.isBlank()) return null
-            return customerState
-                ?.activeMeters
-                ?.find { it.meterId == meterId }
-                ?.balance
-        }
-
-        return dbUsage +
-            buildMap {
-                // monthlySends: Polar email meter — the plan's credited_units (from meter credit
-                // benefits) minus consumed_units (from reportEmailSend() calls). This is the
-                // authoritative source for monthly quota; the old COUNT(*) query is removed.
-                // Fail-open: if Polar is unavailable this key is absent → enforceMeter passes.
-                meterBalance(SIGNAL_EMAIL_METER_ID)?.let { put("monthlySends", it) }
-                meterBalance(SIGNAL_AUTOMATION_RUN_METER_ID)?.let { put("automationRunBalance", it) }
-                meterBalance(SIGNAL_AI_CREDIT_METER_ID)?.let { put("aiCreditBalance", it) }
-            }
-    }
 }
 
 // ─── PlanEntitlements → PlanFeatureConfig ─────────────────────────────────────
