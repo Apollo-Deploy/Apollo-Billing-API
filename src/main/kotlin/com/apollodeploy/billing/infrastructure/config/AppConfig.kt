@@ -91,4 +91,9 @@ object AppConfig {
     val signalDbIdleTimeoutMs: Long = config.getLong("apollo-billing.signal-db.idle-timeout-ms")
     val signalDbConnectionTimeoutMs: Long = config.getLong("apollo-billing.signal-db.connection-timeout-ms")
     val signalDbStatementTimeoutMs: Long = config.getLong("apollo-billing.signal-db.statement-timeout-ms")
+
+    // Redis
+    val redisHost: String = config.getString("apollo-billing.redis.host")
+    val redisPort: Int = config.getInt("apollo-billing.redis.port")
+    val redisPassword: String = config.getString("apollo-billing.redis.password")
 }

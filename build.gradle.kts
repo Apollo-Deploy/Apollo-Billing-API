@@ -29,6 +29,7 @@ kotlin {
 
 dependencies {
     val ktorVersion = "3.1.1"
+    val arrowVersion = "2.1.0"
 
     // Ktor Server
     implementation("io.ktor:ktor-server-core:$ktorVersion")
@@ -36,6 +37,7 @@ dependencies {
     implementation("io.ktor:ktor-server-content-negotiation:$ktorVersion")
     implementation("io.ktor:ktor-server-status-pages:$ktorVersion")
     implementation("io.ktor:ktor-server-call-logging:$ktorVersion")
+    implementation("io.ktor:ktor-server-rate-limit:$ktorVersion")
     implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")
 
     // OpenAPI / Scalar docs + Tesseract SDK generation
@@ -54,6 +56,13 @@ dependencies {
     // Database
     implementation("com.zaxxer:HikariCP:6.2.1")
     implementation("org.postgresql:postgresql:42.7.7")
+
+    // Redis (Polar state fallback cache)
+    implementation("io.lettuce:lettuce-core:6.5.5.RELEASE")
+
+    // Arrow (typed errors + resilience)
+    implementation("io.arrow-kt:arrow-core:$arrowVersion")
+    implementation("io.arrow-kt:arrow-resilience:$arrowVersion")
 
     // Configuration
     implementation("com.typesafe:config:1.4.3")
