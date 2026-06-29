@@ -80,9 +80,12 @@ class SignalSmsBilling(
             return signalSmsPlans.first()
         }
 
-        val activeProductId = subscriptionRepo.findLatestActiveProductId(
-            APP_SLUG, orgId, smsProductIds,
-        )
+        val activeProductId =
+            subscriptionRepo.findLatestActiveProductId(
+                APP_SLUG,
+                orgId,
+                smsProductIds,
+            )
 
         if (activeProductId == null) {
             onBlocked(
@@ -154,8 +157,9 @@ class SignalSmsBilling(
                 onBlocked(
                     SmsBlockedError(
                         code = SmsErrorCodes.SEGMENTS_EXHAUSTED,
-                        message = "Monthly SMS segment allowance exhausted. " +
-                            "Enable overage, upgrade your SMS plan, or purchase a segment top-up pack.",
+                        message =
+                            "Monthly SMS segment allowance exhausted. " +
+                                "Enable overage, upgrade your SMS plan, or purchase a segment top-up pack.",
                         orgId = orgId,
                         remaining = balance,
                         needed = needed,
@@ -186,8 +190,9 @@ class SignalSmsBilling(
                 onBlocked(
                     SmsBlockedError(
                         code = SmsErrorCodes.SEGMENTS_EXHAUSTED,
-                        message = "Monthly MMS message allowance exhausted. " +
-                            "Enable overage or purchase additional capacity.",
+                        message =
+                            "Monthly MMS message allowance exhausted. " +
+                                "Enable overage or purchase additional capacity.",
                         orgId = orgId,
                         remaining = balance,
                         needed = needed,
@@ -205,20 +210,21 @@ class SignalSmsBilling(
         feature: String,
         onBlocked: (SmsBlockedError) -> Nothing,
     ) {
-        val features = smsPlan.entitlements.run {
-            mapOf(
-                "smsNumberPooling" to smsNumberPooling,
-                "smsShortCodes" to smsShortCodes,
-                "smsAbTesting" to smsAbTesting,
-                "smsSendTimeOptimization" to smsSendTimeOptimization,
-                "smsCarrierReporting" to smsCarrierReporting,
-                "smsCostAnalytics" to smsCostAnalytics,
-                "smsConversationThreads" to smsConversationThreads,
-                "smsKeywordRouting" to smsKeywordRouting,
-                "smsAiAutoReply" to smsAiAutoReply,
-                "smsRcs" to smsRcs,
-            )
-        }
+        val features =
+            smsPlan.entitlements.run {
+                mapOf(
+                    "smsNumberPooling" to smsNumberPooling,
+                    "smsShortCodes" to smsShortCodes,
+                    "smsAbTesting" to smsAbTesting,
+                    "smsSendTimeOptimization" to smsSendTimeOptimization,
+                    "smsCarrierReporting" to smsCarrierReporting,
+                    "smsCostAnalytics" to smsCostAnalytics,
+                    "smsConversationThreads" to smsConversationThreads,
+                    "smsKeywordRouting" to smsKeywordRouting,
+                    "smsAiAutoReply" to smsAiAutoReply,
+                    "smsRcs" to smsRcs,
+                )
+            }
 
         if (features[feature] != true) {
             onBlocked(
@@ -260,38 +266,51 @@ class SignalSmsBilling(
     /**
      * Report SMS segment(s) sent. Fire-and-forget after successful Bandwidth send.
      */
-    suspend fun reportSmsSend(orgId: String, segmentCount: Int, requestId: String? = null) {
+    suspend fun reportSmsSend(
+        orgId: String,
+        segmentCount: Int,
+        requestId: String? = null,
+    ) {
         polarClient.ingestUsageEvent(
             orgId = orgId,
             eventName = SmsEventKeys.SEGMENT_SENT,
             quantity = segmentCount,
-            metadata = buildMap {
-                requestId?.let { put("requestId", JsonPrimitive(it)) }
-            },
+            metadata =
+                buildMap {
+                    requestId?.let { put("requestId", JsonPrimitive(it)) }
+                },
         )
     }
 
     /**
      * Report MMS message sent. Fire-and-forget after successful MMS send.
      */
-    suspend fun reportMmsSend(orgId: String, requestId: String? = null) {
+    suspend fun reportMmsSend(
+        orgId: String,
+        requestId: String? = null,
+    ) {
         polarClient.ingestUsageEvent(
             orgId = orgId,
             eventName = SmsEventKeys.MMS_MESSAGE_SENT,
             quantity = 1,
-            metadata = buildMap {
-                requestId?.let { put("requestId", JsonPrimitive(it)) }
-            },
+            metadata =
+                buildMap {
+                    requestId?.let { put("requestId", JsonPrimitive(it)) }
+                },
         )
     }
 
     // ─── Internal helpers ─────────────────────────────────────────────────
 
-    private suspend fun getMeterBalance(orgId: String, meterId: String): Int? {
+    private suspend fun getMeterBalance(
+        orgId: String,
+        meterId: String,
+    ): Int? {
         // Use PolarStateCache (Redis fallback) if available, otherwise direct Polar call
-        val customerState = polarStateCache?.getCustomerState(orgId)
-            ?: polarClient.getCustomerState(orgId)
-            ?: return null
+        val customerState =
+            polarStateCache?.getCustomerState(orgId)
+                ?: polarClient.getCustomerState(orgId)
+                ?: return null
         return customerState.activeMeters
             .find { it.meterId == meterId }
             ?.balance

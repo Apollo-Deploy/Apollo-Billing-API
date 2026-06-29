@@ -1,12 +1,12 @@
 package com.apollodeploy.billing.infrastructure.redis
 
 import com.apollodeploy.billing.infrastructure.config.AppConfig
-import io.lettuce.core.RedisClient as LettuceClient
 import io.lettuce.core.RedisURI
 import io.lettuce.core.api.StatefulRedisConnection
 import io.lettuce.core.api.async.RedisAsyncCommands
 import kotlinx.coroutines.future.await
 import org.slf4j.LoggerFactory
+import io.lettuce.core.RedisClient as LettuceClient
 
 /**
  * Apollo Billing — Redis client wrapper.
@@ -30,14 +30,15 @@ class RedisPool private constructor(
         fun create(): RedisPool {
             val logger = LoggerFactory.getLogger(RedisPool::class.java)
             return try {
-                val uri = RedisURI.builder()
-                    .withHost(AppConfig.redisHost)
-                    .withPort(AppConfig.redisPort)
-                    .apply {
-                        val pass = AppConfig.redisPassword
-                        if (pass.isNotBlank()) withPassword(pass.toCharArray())
-                    }
-                    .build()
+                val uri =
+                    RedisURI
+                        .builder()
+                        .withHost(AppConfig.redisHost)
+                        .withPort(AppConfig.redisPort)
+                        .apply {
+                            val pass = AppConfig.redisPassword
+                            if (pass.isNotBlank()) withPassword(pass.toCharArray())
+                        }.build()
 
                 val client = LettuceClient.create(uri)
                 val connection = client.connect()
@@ -67,7 +68,11 @@ class RedisPool private constructor(
     }
 
     /** SET with TTL (seconds). Fire-and-forget on failure. */
-    suspend fun setEx(key: String, value: String, ttlSeconds: Long) {
+    suspend fun setEx(
+        key: String,
+        value: String,
+        ttlSeconds: Long,
+    ) {
         val cmd = commands() ?: return
         try {
             cmd.setex(key, ttlSeconds, value).await()
@@ -77,7 +82,11 @@ class RedisPool private constructor(
     }
 
     /** SET NX (only if not exists) with TTL. Returns true if set, false if already exists. */
-    suspend fun setNx(key: String, value: String, ttlSeconds: Long): Boolean {
+    suspend fun setNx(
+        key: String,
+        value: String,
+        ttlSeconds: Long,
+    ): Boolean {
         val cmd = commands() ?: return false
         return try {
             val result = cmd.setnx(key, value).await()

@@ -130,7 +130,7 @@ class SignalBillingConfig(
                 (SELECT polar_product_id FROM sms_plan) AS "smsPlanProductId",
                 (SELECT cnt FROM dedicated_ip) AS "dedicatedIpQty",
                 (SELECT cnt FROM api_keys) AS "apiKeyCount"
-        """.trimIndent()
+            """.trimIndent()
     }
 
     /**
@@ -228,28 +228,34 @@ class SignalBillingConfig(
         val sql = buildPlatformQuery()
 
         // Build params: appSlug, orgId for each CTE + dedicated IP product ID + orgId for apikey
-        val params = buildList {
-            // base_plan CTE: app_slug, org_id, ...product_ids
-            add(APP_SLUG); add(orgId)
-            addAll(basePlanProductIds)
-            // sms_plan CTE: app_slug, org_id, ...sms_product_ids
-            add(APP_SLUG); add(orgId)
-            addAll(smsProductIds)
-            // dedicated_ip CTE: app_slug, org_id, product_id
-            add(APP_SLUG); add(orgId); add(dedicatedIpProductId)
-            // api_keys CTE: org_id
-            add(orgId)
-        }
+        val params =
+            buildList {
+                // base_plan CTE: app_slug, org_id, ...product_ids
+                add(APP_SLUG)
+                add(orgId)
+                addAll(basePlanProductIds)
+                // sms_plan CTE: app_slug, org_id, ...sms_product_ids
+                add(APP_SLUG)
+                add(orgId)
+                addAll(smsProductIds)
+                // dedicated_ip CTE: app_slug, org_id, product_id
+                add(APP_SLUG)
+                add(orgId)
+                add(dedicatedIpProductId)
+                // api_keys CTE: org_id
+                add(orgId)
+            }
 
         return platformReaderDb.withConnection { conn ->
-            conn.prepareAndQuery(sql, params) { rs ->
-                PlatformBillingState(
-                    basePlanProductId = rs.getString("basePlanProductId"),
-                    smsPlanProductId = rs.getString("smsPlanProductId"),
-                    dedicatedIpQuantity = rs.getInt("dedicatedIpQty"),
-                    apiKeyCount = rs.getInt("apiKeyCount"),
-                )
-            }.firstOrNull() ?: PlatformBillingState(null, null, 0, 0)
+            conn
+                .prepareAndQuery(sql, params) { rs ->
+                    PlatformBillingState(
+                        basePlanProductId = rs.getString("basePlanProductId"),
+                        smsPlanProductId = rs.getString("smsPlanProductId"),
+                        dedicatedIpQuantity = rs.getInt("dedicatedIpQty"),
+                        apiKeyCount = rs.getInt("apiKeyCount"),
+                    )
+                }.firstOrNull() ?: PlatformBillingState(null, null, 0, 0)
         }
     }
 
@@ -263,32 +269,38 @@ class SignalBillingConfig(
         // ── 1 query: Platform DB (subscriptions + API keys) ──────────────────
         val state = fetchPlatformState(orgId)
 
-        val plan = state.basePlanProductId
-            ?.let { signalFindPlanByProductId(it) }
-            ?: signalGetFreePlan()
+        val plan =
+            state.basePlanProductId
+                ?.let { signalFindPlanByProductId(it) }
+                ?: signalGetFreePlan()
 
         val baseConfig = plan.entitlements.toPlanFeatureConfig()
         val dedicatedIpsEnabled = isDedicatedIpEligibleForPlan(plan.slug) && state.dedicatedIpQuantity > 0
 
-        val smsFeatures = if (state.smsPlanProductId != null) {
-            signalFindSmsPlanByProductId(state.smsPlanProductId)
-                ?.entitlements?.toFeatureMap()
-                ?: SMS_NO_ADDON_ENTITLEMENTS.toFeatureMap()
-        } else {
-            SMS_NO_ADDON_ENTITLEMENTS.toFeatureMap()
-        }
+        val smsFeatures =
+            if (state.smsPlanProductId != null) {
+                signalFindSmsPlanByProductId(state.smsPlanProductId)
+                    ?.entitlements
+                    ?.toFeatureMap()
+                    ?: SMS_NO_ADDON_ENTITLEMENTS.toFeatureMap()
+            } else {
+                SMS_NO_ADDON_ENTITLEMENTS.toFeatureMap()
+            }
 
-        val planResolution = PlanResolution(
-            planId = plan.slug,
-            config = baseConfig.copy(
-                features = baseConfig.features +
-                    mapOf(
-                        "multiRegion" to isMultiRegionAllowedForPlan(plan.slug),
-                        "dedicatedIps" to dedicatedIpsEnabled,
-                    ) +
-                    smsFeatures,
-            ),
-        )
+        val planResolution =
+            PlanResolution(
+                planId = plan.slug,
+                config =
+                    baseConfig.copy(
+                        features =
+                            baseConfig.features +
+                                mapOf(
+                                    "multiRegion" to isMultiRegionAllowedForPlan(plan.slug),
+                                    "dedicatedIps" to dedicatedIpsEnabled,
+                                ) +
+                                smsFeatures,
+                    ),
+            )
 
         // ── 1 query: Signal DB (projects, domains, webhooks, daily sends, SMS senders) ────
         val signalUsage =
@@ -314,21 +326,24 @@ class SignalBillingConfig(
         val dbUsage = signalUsage + mapOf("maxApiKeys" to state.apiKeyCount)
 
         // ── Polar meter balances (via Redis-cached state, no DB) ─────────────
-        val customerState = polarStateCache?.getCustomerState(orgId)
-            ?: polarClient.getCustomerState(orgId)
+        val customerState =
+            polarStateCache?.getCustomerState(orgId)
+                ?: polarClient.getCustomerState(orgId)
 
         fun meterBalance(meterId: String): Int? {
             if (meterId.isBlank()) return null
             return customerState?.activeMeters?.find { it.meterId == meterId }?.balance
         }
 
-        val usage = dbUsage + buildMap {
-            meterBalance(SIGNAL_EMAIL_METER_ID)?.let { put("monthlySends", it) }
-            meterBalance(SIGNAL_AUTOMATION_RUN_METER_ID)?.let { put("automationRunBalance", it) }
-            meterBalance(SIGNAL_AI_CREDIT_METER_ID)?.let { put("aiCreditBalance", it) }
-            meterBalance(SIGNAL_SMS_SEGMENT_METER_ID)?.let { put("smsSegmentBalance", it) }
-            meterBalance(SIGNAL_MMS_MESSAGE_METER_ID)?.let { put("mmsMessageBalance", it) }
-        }
+        val usage =
+            dbUsage +
+                buildMap {
+                    meterBalance(SIGNAL_EMAIL_METER_ID)?.let { put("monthlySends", it) }
+                    meterBalance(SIGNAL_AUTOMATION_RUN_METER_ID)?.let { put("automationRunBalance", it) }
+                    meterBalance(SIGNAL_AI_CREDIT_METER_ID)?.let { put("aiCreditBalance", it) }
+                    meterBalance(SIGNAL_SMS_SEGMENT_METER_ID)?.let { put("smsSegmentBalance", it) }
+                    meterBalance(SIGNAL_MMS_MESSAGE_METER_ID)?.let { put("mmsMessageBalance", it) }
+                }
 
         return PlanAndUsageResolution(plan = planResolution, usage = usage)
     }

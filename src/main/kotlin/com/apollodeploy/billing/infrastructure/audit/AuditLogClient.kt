@@ -2,7 +2,6 @@ package com.apollodeploy.billing.infrastructure.audit
 
 import io.ktor.client.HttpClient
 import io.ktor.client.request.bearerAuth
-import io.ktor.client.request.forms.formData
 import io.ktor.client.request.forms.submitForm
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -47,11 +46,18 @@ class AuditLogClient(
     // audit log failures never cancel sibling coroutines.
     private val scope = CoroutineScope(SupervisorJob())
 
-    private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
+    private val json =
+        Json {
+            ignoreUnknownKeys = true
+            explicitNulls = false
+        }
 
     // ─── Token cache ──────────────────────────────────────────────────────────
 
-    private data class CachedToken(val accessToken: String, val expiresAtMs: Long)
+    private data class CachedToken(
+        val accessToken: String,
+        val expiresAtMs: Long,
+    )
 
     private val cachedToken = AtomicReference<CachedToken?>(null)
     private val tokenRefreshLock = AtomicLong(0L) // 0 = available

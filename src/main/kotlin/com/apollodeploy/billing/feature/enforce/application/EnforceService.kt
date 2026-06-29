@@ -20,22 +20,27 @@ class EnforceService(
 ) {
     private val logger = LoggerFactory.getLogger(EnforceService::class.java)
 
-    suspend fun enforce(req: EnforceRequest, callerClientId: String? = null): EnforceResult {
+    suspend fun enforce(
+        req: EnforceRequest,
+        callerClientId: String? = null,
+    ): EnforceResult {
         val enforcer =
             enforceRepo.getEnforcer(req.appSlug)
                 ?: return EnforceResult.Rejected(
                     statusCode = 422,
-                    error = BillingErrorResponse(
-                        code = "billing.unknown_app",
-                        message = "Unknown app slug: ${req.appSlug}",
-                    ),
+                    error =
+                        BillingErrorResponse(
+                            code = "billing.unknown_app",
+                            message = "Unknown app slug: ${req.appSlug}",
+                        ),
                 )
 
-        val result: Either<BillingError, Unit> = when (val check = req.check) {
-            is BillingCheck.Quota -> enforcer.enforceQuota(req.orgId, check.resource, check.limitKey)
-            is BillingCheck.Feature -> enforcer.enforceFeature(req.orgId, check.feature)
-            is BillingCheck.Meter -> enforcer.enforceMeter(req.orgId, check.meterKey, check.needed)
-        }
+        val result: Either<BillingError, Unit> =
+            when (val check = req.check) {
+                is BillingCheck.Quota -> enforcer.enforceQuota(req.orgId, check.resource, check.limitKey)
+                is BillingCheck.Feature -> enforcer.enforceFeature(req.orgId, check.feature)
+                is BillingCheck.Meter -> enforcer.enforceMeter(req.orgId, check.meterKey, check.needed)
+            }
 
         return result.fold(
             ifLeft = { error ->
@@ -49,21 +54,26 @@ class EnforceService(
         )
     }
 
-    private fun logBillingError(error: BillingError, req: EnforceRequest, callerClientId: String?) {
-        val (action, riskLevel) = when (error) {
-            is BillingError.QuotaExceeded -> "quota_exceeded" to AuditRiskLevel.MEDIUM
-            is BillingError.MeterExhausted -> "meter_exhausted" to AuditRiskLevel.MEDIUM
-            is BillingError.FeatureNotAvailable -> "feature_denied" to AuditRiskLevel.LOW
-            is BillingError.NoSubscription -> {
-                logger.debug("[billing:enforce] no subscription org={} app={}", req.orgId, req.appSlug)
-                return // Don't audit log no-subscription (common for free users)
+    private fun logBillingError(
+        error: BillingError,
+        req: EnforceRequest,
+        callerClientId: String?,
+    ) {
+        val (action, riskLevel) =
+            when (error) {
+                is BillingError.QuotaExceeded -> "quota_exceeded" to AuditRiskLevel.MEDIUM
+                is BillingError.MeterExhausted -> "meter_exhausted" to AuditRiskLevel.MEDIUM
+                is BillingError.FeatureNotAvailable -> "feature_denied" to AuditRiskLevel.LOW
+                is BillingError.NoSubscription -> {
+                    logger.debug("[billing:enforce] no subscription org={} app={}", req.orgId, req.appSlug)
+                    return // Don't audit log no-subscription (common for free users)
+                }
+                is BillingError.ServiceUnavailable -> {
+                    logger.error("[billing:enforce] service unavailable org={} app={}: {}", req.orgId, req.appSlug, error.message)
+                    return
+                }
+                else -> "enforcement_failed" to AuditRiskLevel.LOW
             }
-            is BillingError.ServiceUnavailable -> {
-                logger.error("[billing:enforce] service unavailable org={} app={}: {}", req.orgId, req.appSlug, error.message)
-                return
-            }
-            else -> "enforcement_failed" to AuditRiskLevel.LOW
-        }
 
         auditLogClient.log(
             AuditEvent(
@@ -75,11 +85,12 @@ class EnforceService(
                 status = AuditStatus.FAILURE,
                 riskLevel = riskLevel,
                 errorMessage = error.message,
-                metadata = buildMap {
-                    put("appSlug", req.appSlug)
-                    put("errorCode", error.code)
-                    callerClientId?.let { put("callerClientId", it) }
-                },
+                metadata =
+                    buildMap {
+                        put("appSlug", req.appSlug)
+                        put("errorCode", error.code)
+                        callerClientId?.let { put("callerClientId", it) }
+                    },
             ),
         )
     }
@@ -87,15 +98,29 @@ class EnforceService(
 
 private fun BillingError.toErrorResponse(): BillingErrorResponse =
     when (this) {
-        is BillingError.QuotaExceeded -> BillingErrorResponse(
-            code = code, message = message, resource = resource, current = current, limit = limit,
-        )
-        is BillingError.MeterExhausted -> BillingErrorResponse(
-            code = code, message = message, resource = meterKey, current = balance, limit = needed,
-        )
-        is BillingError.FeatureNotAvailable -> BillingErrorResponse(
-            code = code, message = message, feature = feature, currentPlan = currentPlan,
-        )
+        is BillingError.QuotaExceeded ->
+            BillingErrorResponse(
+                code = code,
+                message = message,
+                resource = resource,
+                current = current,
+                limit = limit,
+            )
+        is BillingError.MeterExhausted ->
+            BillingErrorResponse(
+                code = code,
+                message = message,
+                resource = meterKey,
+                current = balance,
+                limit = needed,
+            )
+        is BillingError.FeatureNotAvailable ->
+            BillingErrorResponse(
+                code = code,
+                message = message,
+                feature = feature,
+                currentPlan = currentPlan,
+            )
         is BillingError.NoSubscription -> BillingErrorResponse(code = code, message = message)
         is BillingError.UnknownApp -> BillingErrorResponse(code = code, message = message)
         is BillingError.ServiceUnavailable -> BillingErrorResponse(code = code, message = message)

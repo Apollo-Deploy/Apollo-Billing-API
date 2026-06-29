@@ -31,12 +31,12 @@ object UrlValidator {
     // Patterns that indicate potentially dangerous URLs
     private val BLOCKED_HOST_PATTERNS =
         listOf(
-            Regex("""^\d+\.\d+\.\d+\.\d+$"""),          // IPv4 addresses
-            Regex("""^\[.*]$"""),                          // IPv6 addresses
+            Regex("""^\d+\.\d+\.\d+\.\d+$"""), // IPv4 addresses
+            Regex("""^\[.*]$"""), // IPv6 addresses
             Regex("""^localhost$""", RegexOption.IGNORE_CASE),
             Regex("""^127\.0\.0\.\d+$"""),
             Regex("""^0\.0\.0\.0$"""),
-            Regex("""^10\.\d+\.\d+\.\d+$"""),             // Private RFC1918
+            Regex("""^10\.\d+\.\d+\.\d+$"""), // Private RFC1918
             Regex("""^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$"""),
             Regex("""^192\.168\.\d+\.\d+$"""),
             Regex("""\.local$""", RegexOption.IGNORE_CASE),
@@ -45,7 +45,8 @@ object UrlValidator {
 
     private val configuredAllowedDomains: Set<String> by lazy {
         val envDomains =
-            System.getenv("CHECKOUT_REDIRECT_ALLOWED_DOMAINS")
+            System
+                .getenv("CHECKOUT_REDIRECT_ALLOWED_DOMAINS")
                 ?.split(",")
                 ?.map { it.trim().lowercase() }
                 ?.filter { it.isNotBlank() }
@@ -94,9 +95,10 @@ object UrlValidator {
 
         // If allowlist is configured, validate against it
         if (configuredAllowedDomains.isNotEmpty()) {
-            val isAllowed = configuredAllowedDomains.any { allowed ->
-                host == allowed || host.endsWith(".$allowed")
-            }
+            val isAllowed =
+                configuredAllowedDomains.any { allowed ->
+                    host == allowed || host.endsWith(".$allowed")
+                }
             if (!isAllowed) {
                 return "URL domain not in allowed list: $host"
             }
@@ -108,7 +110,10 @@ object UrlValidator {
     /**
      * Convenience: validate and return the URL if valid, or throw.
      */
-    fun requireValidRedirectUrl(url: String?, fieldName: String): String? {
+    fun requireValidRedirectUrl(
+        url: String?,
+        fieldName: String,
+    ): String? {
         val error = validateRedirectUrl(url) ?: return url
         throw InvalidRedirectUrlException(fieldName, error)
     }

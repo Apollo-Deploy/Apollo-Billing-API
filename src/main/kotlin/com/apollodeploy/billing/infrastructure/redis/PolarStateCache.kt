@@ -30,7 +30,11 @@ class PolarStateCache(
     private val cacheTtlSeconds: Long = 300L, // 5 minutes
 ) {
     private val logger = LoggerFactory.getLogger(PolarStateCache::class.java)
-    private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
+    private val json =
+        Json {
+            ignoreUnknownKeys = true
+            explicitNulls = false
+        }
 
     /**
      * Get customer state with Redis fallback.
@@ -59,7 +63,10 @@ class PolarStateCache(
         redis.del(cacheKey(orgId))
     }
 
-    private suspend fun cacheState(orgId: String, state: PolarCustomerState) {
+    private suspend fun cacheState(
+        orgId: String,
+        state: PolarCustomerState,
+    ) {
         try {
             val serialized = json.encodeToString(state)
             redis.setEx(cacheKey(orgId), serialized, cacheTtlSeconds)

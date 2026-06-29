@@ -26,12 +26,13 @@ object PolarCircuitBreakerFactory {
     private val logger = LoggerFactory.getLogger(PolarCircuitBreakerFactory::class.java)
 
     suspend fun create(): CircuitBreaker {
-        val cb = CircuitBreaker(
-            openingStrategy = OpeningStrategy.Count(maxFailures = 5),
-            resetTimeout = 30.seconds,
-            exponentialBackoffFactor = 2.0,
-            maxResetTimeout = 300.seconds,
-        )
+        val cb =
+            CircuitBreaker(
+                openingStrategy = OpeningStrategy.Count(maxFailures = 5),
+                resetTimeout = 30.seconds,
+                exponentialBackoffFactor = 2.0,
+                maxResetTimeout = 300.seconds,
+            )
         logger.info("[billing:resilience] Polar CircuitBreaker created (opens after 5 failures, 30s reset)")
         return cb
     }

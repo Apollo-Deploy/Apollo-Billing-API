@@ -45,12 +45,14 @@ object AppConfig {
 
     /** JWKS URL for token verification. Defaults to {platformUrl}/auth/jwks. */
     val iamJwksUrl: String =
-        config.getString("apollo-billing.iam.jwks-url")
+        config
+            .getString("apollo-billing.iam.jwks-url")
             .ifBlank { if (platformUrl.isNotBlank()) "${platformUrl.trimEnd('/')}/auth/jwks" else "" }
 
     /** Expected iss claim in incoming tokens. Defaults to platformUrl. */
     val iamAllowedIssuers: Set<String> =
-        config.getString("apollo-billing.iam.issuer-url")
+        config
+            .getString("apollo-billing.iam.issuer-url")
             .split(",")
             .map { it.trim() }
             .filter { it.isNotBlank() }
@@ -59,7 +61,8 @@ object AppConfig {
 
     /** Expected aud claim(s) in incoming tokens. Defaults to platformUrl. */
     val iamValidAudiences: Set<String> =
-        config.getString("apollo-billing.iam.valid-audiences")
+        config
+            .getString("apollo-billing.iam.valid-audiences")
             .split(",")
             .map { it.trim() }
             .filter { it.isNotBlank() }
@@ -72,7 +75,8 @@ object AppConfig {
      * on the platform (e.g. signal's client_id).
      */
     val iamServiceClientIds: Set<String> =
-        config.getString("apollo-billing.iam.service-client-ids")
+        config
+            .getString("apollo-billing.iam.service-client-ids")
             .split(",")
             .map { it.trim() }
             .filter { it.isNotBlank() }

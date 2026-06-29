@@ -39,17 +39,29 @@ data class AuditEvent(
 
 @Serializable
 enum class AuditStatus {
-    @SerialName("success") SUCCESS,
-    @SerialName("failure") FAILURE,
-    @SerialName("partial") PARTIAL,
+    @SerialName("success")
+    SUCCESS,
+
+    @SerialName("failure")
+    FAILURE,
+
+    @SerialName("partial")
+    PARTIAL,
 }
 
 @Serializable
 enum class AuditRiskLevel {
-    @SerialName("low") LOW,
-    @SerialName("medium") MEDIUM,
-    @SerialName("high") HIGH,
-    @SerialName("critical") CRITICAL,
+    @SerialName("low")
+    LOW,
+
+    @SerialName("medium")
+    MEDIUM,
+
+    @SerialName("high")
+    HIGH,
+
+    @SerialName("critical")
+    CRITICAL,
 }
 
 @Serializable

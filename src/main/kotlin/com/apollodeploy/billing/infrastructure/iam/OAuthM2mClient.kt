@@ -60,7 +60,7 @@ class OAuthM2mClient(
     private var cachedToken: String? = null
 
     @Volatile
-    private var tokenExpiresAt: Long = 0L  // epoch seconds
+    private var tokenExpiresAt: Long = 0L // epoch seconds
 
     /**
      * Returns a valid M2M bearer token, refreshing it automatically when
@@ -97,39 +97,44 @@ class OAuthM2mClient(
             )
         }
 
-        val body = buildString {
-            append("grant_type=client_credentials")
-            append("&client_id=").append(encode(clientId))
-            append("&client_secret=").append(encode(clientSecret))
-            append("&resource=").append(encode(platformUrl))
-        }
+        val body =
+            buildString {
+                append("grant_type=client_credentials")
+                append("&client_id=").append(encode(clientId))
+                append("&client_secret=").append(encode(clientSecret))
+                append("&resource=").append(encode(platformUrl))
+            }
 
-        val responseText = withTimeout(timeoutMs) {
-            val response = httpClient.post("$platformUrl/auth/oauth2/token") {
-                contentType(ContentType.Application.FormUrlEncoded)
-                setBody(body)
+        val responseText =
+            withTimeout(timeoutMs) {
+                val response =
+                    httpClient.post("$platformUrl/auth/oauth2/token") {
+                        contentType(ContentType.Application.FormUrlEncoded)
+                        setBody(body)
+                    }
+                if (!response.status.isSuccess()) {
+                    val err = runCatching { response.bodyAsText() }.getOrElse { "" }
+                    throw OAuthM2mException(
+                        "OAuth token endpoint returned ${response.status.value}: $err",
+                    )
+                }
+                response.bodyAsText()
             }
-            if (!response.status.isSuccess()) {
-                val err = runCatching { response.bodyAsText() }.getOrElse { "" }
-                throw OAuthM2mException(
-                    "OAuth token endpoint returned ${response.status.value}: $err",
-                )
-            }
-            response.bodyAsText()
-        }
 
         return parseTokenResponse(responseText)
     }
 
     private fun parseTokenResponse(text: String): String {
-        val root = try {
-            json.parseToJsonElement(text).jsonObject
-        } catch (e: Exception) {
-            throw OAuthM2mException("Failed to parse OAuth token response: ${e.message}")
-        }
+        val root =
+            try {
+                json.parseToJsonElement(text).jsonObject
+            } catch (e: Exception) {
+                throw OAuthM2mException("Failed to parse OAuth token response: ${e.message}")
+            }
 
-        val accessToken = root["access_token"]?.jsonPrimitive?.content
-            ?: throw OAuthM2mException("OAuth token response missing 'access_token'")
+        val accessToken =
+            root["access_token"]?.jsonPrimitive?.content
+                ?: throw OAuthM2mException("OAuth token response missing 'access_token'")
 
         val expiresIn = root["expires_in"]?.jsonPrimitive?.longOrNull ?: 3_600L
         val now = System.currentTimeMillis() / 1_000L
@@ -140,9 +145,10 @@ class OAuthM2mClient(
         return accessToken
     }
 
-    private fun encode(value: String): String =
-        java.net.URLEncoder.encode(value, Charsets.UTF_8.name())
+    private fun encode(value: String): String = java.net.URLEncoder.encode(value, Charsets.UTF_8.name())
 }
 
 /** Thrown when the M2M token cannot be obtained. */
-class OAuthM2mException(message: String) : RuntimeException(message)
+class OAuthM2mException(
+    message: String,
+) : RuntimeException(message)

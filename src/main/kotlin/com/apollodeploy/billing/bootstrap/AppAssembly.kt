@@ -67,7 +67,6 @@ class AppAssembly private constructor(
     private val signalDb: DatabasePool?,
     private val redis: RedisPool?,
 ) : AutoCloseable {
-
     companion object {
         private val logger = LoggerFactory.getLogger(AppAssembly::class.java)
 
@@ -86,17 +85,24 @@ class AppAssembly private constructor(
             val oAuthM2mClient = buildOAuthM2mClient(httpClient)
             val auditLogClient = buildAuditLogClient(httpClient)
 
-            val signalApp = SignalBillingConfig(
-                db, platformReaderDb, signalDb, subscriptionRepo, polarClient, polarStateCache,
-            ).buildRegistration()
+            val signalApp =
+                SignalBillingConfig(
+                    db,
+                    platformReaderDb,
+                    signalDb,
+                    subscriptionRepo,
+                    polarClient,
+                    polarStateCache,
+                ).buildRegistration()
 
             val appRegistry = AppRegistry(listOf(signalApp))
 
-            val polarWebhookHandler = PolarWebhookHandler(
-                subscriptionRepo = subscriptionRepo,
-                appRegistry = appRegistry,
-                auditLogClient = auditLogClient,
-            )
+            val polarWebhookHandler =
+                PolarWebhookHandler(
+                    subscriptionRepo = subscriptionRepo,
+                    appRegistry = appRegistry,
+                    auditLogClient = auditLogClient,
+                )
 
             val productCatalogRepo = ProductCatalogRepo(appRegistry, polarClient)
             runBlocking {
@@ -141,41 +147,45 @@ class AppAssembly private constructor(
             val stubDb = DatabasePool.createStub()
             val subscriptionRepo = SubscriptionRepo(stubDb)
 
-            val signalApp = SignalBillingConfig(
-                db = stubDb,
-                platformReaderDb = stubDb,
-                signalDb = null,
-                subscriptionRepo = subscriptionRepo,
-                polarClient = polarClient,
-            ).buildRegistration()
+            val signalApp =
+                SignalBillingConfig(
+                    db = stubDb,
+                    platformReaderDb = stubDb,
+                    signalDb = null,
+                    subscriptionRepo = subscriptionRepo,
+                    polarClient = polarClient,
+                ).buildRegistration()
 
             val appRegistry = AppRegistry(listOf(signalApp))
 
-            val auditLogClient = AuditLogClient(
-                httpClient = httpClient,
-                platformUrl = "",
-                clientId = "",
-                clientSecret = "",
-                enabled = false,
-            )
+            val auditLogClient =
+                AuditLogClient(
+                    httpClient = httpClient,
+                    platformUrl = "",
+                    clientId = "",
+                    clientSecret = "",
+                    enabled = false,
+                )
 
-            val polarWebhookHandler = PolarWebhookHandler(
-                subscriptionRepo = subscriptionRepo,
-                appRegistry = appRegistry,
-                auditLogClient = auditLogClient,
-            )
+            val polarWebhookHandler =
+                PolarWebhookHandler(
+                    subscriptionRepo = subscriptionRepo,
+                    appRegistry = appRegistry,
+                    auditLogClient = auditLogClient,
+                )
 
             val productCatalogRepo = ProductCatalogRepo(appRegistry, polarClient)
             val controllers = buildControllers(appRegistry, polarClient, productCatalogRepo, polarWebhookHandler, auditLogClient)
 
             logger.info("[billing] Manifest assembly complete — registered apps: {}", appRegistry.knownApps())
 
-            val stubOAuthM2mClient = OAuthM2mClient(
-                httpClient = httpClient,
-                platformUrl = "",
-                clientId = "",
-                clientSecret = "",
-            )
+            val stubOAuthM2mClient =
+                OAuthM2mClient(
+                    httpClient = httpClient,
+                    platformUrl = "",
+                    clientId = "",
+                    clientSecret = "",
+                )
 
             return AppAssembly(
                 appRegistry = appRegistry,
@@ -202,7 +212,12 @@ class AppAssembly private constructor(
         private fun buildHttpClient(): HttpClient =
             HttpClient(CIO) {
                 install(ContentNegotiation) {
-                    json(Json { ignoreUnknownKeys = true; explicitNulls = false })
+                    json(
+                        Json {
+                            ignoreUnknownKeys = true
+                            explicitNulls = false
+                        },
+                    )
                 }
             }
 

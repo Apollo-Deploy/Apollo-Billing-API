@@ -47,13 +47,11 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.slf4j.LoggerFactory
 import java.math.BigInteger
 import java.security.KeyFactory
-import java.security.MessageDigest
 import java.security.PublicKey
 import java.security.Signature
 import java.security.spec.EdECPoint
@@ -78,8 +76,8 @@ class OAuthServiceAuthException(
 // ── JWKS cache ────────────────────────────────────────────────────────────────
 
 private data class JwksCache(
-    val keys: Map<String, PublicKey>,  // kid → PublicKey
-    val fetchedAt: Long,               // epoch seconds
+    val keys: Map<String, PublicKey>, // kid → PublicKey
+    val fetchedAt: Long, // epoch seconds
 )
 
 private class JwksVerifier(
@@ -110,14 +108,15 @@ private class JwksVerifier(
     private suspend fun fetchJwks(): Map<String, PublicKey> {
         if (jwksUrl.isBlank()) return emptyMap()
         return try {
-            val text = withTimeout(REQUEST_TIMEOUT_MS) {
-                val response = httpClient.get(jwksUrl)
-                if (!response.status.isSuccess()) {
-                    logger.warn("[billing:oauth] JWKS fetch failed status={}", response.status.value)
-                    return@withTimeout ""
+            val text =
+                withTimeout(REQUEST_TIMEOUT_MS) {
+                    val response = httpClient.get(jwksUrl)
+                    if (!response.status.isSuccess()) {
+                        logger.warn("[billing:oauth] JWKS fetch failed status={}", response.status.value)
+                        return@withTimeout ""
+                    }
+                    response.bodyAsText()
                 }
-                response.bodyAsText()
-            }
             if (text.isBlank()) return emptyMap()
             parseJwks(text)
         } catch (e: Exception) {
@@ -127,14 +126,19 @@ private class JwksVerifier(
     }
 
     private fun parseJwks(text: String): Map<String, PublicKey> {
-        val root = try { sharedJson.parseToJsonElement(text).jsonObject } catch (_: Exception) { return emptyMap() }
+        val root =
+            try {
+                sharedJson.parseToJsonElement(text).jsonObject
+            } catch (_: Exception) {
+                return emptyMap()
+            }
         val keysArray = root["keys"] as? JsonArray ?: return emptyMap()
         val result = mutableMapOf<String, PublicKey>()
         for (element in keysArray) {
             val jwk = element as? JsonObject ?: continue
             val kty = jwk["kty"]?.jsonPrimitive?.content ?: continue
             val kid = jwk["kid"]?.jsonPrimitive?.content ?: continue
-            if (kty != "OKP") continue  // Only EdDSA (OKP) keys
+            if (kty != "OKP") continue // Only EdDSA (OKP) keys
             val x = jwk["x"]?.jsonPrimitive?.content ?: continue
             val key = runCatching { decodeEdDsaPublicKey(x) }.getOrNull() ?: continue
             result[kid] = key
@@ -143,9 +147,10 @@ private class JwksVerifier(
     }
 
     private fun decodeEdDsaPublicKey(xBase64Url: String): PublicKey {
-        val xBytes = Base64.getUrlDecoder().decode(
-            xBase64Url.padEnd(xBase64Url.length + (4 - xBase64Url.length % 4) % 4, '=')
-        )
+        val xBytes =
+            Base64.getUrlDecoder().decode(
+                xBase64Url.padEnd(xBase64Url.length + (4 - xBase64Url.length % 4) % 4, '='),
+            )
         // Ed25519: last byte's MSB indicates sign of x coordinate (odd/even)
         val xBytesCopy = xBytes.copyOf()
         val lastByte = xBytesCopy.last()
@@ -182,8 +187,9 @@ private fun verifyEdDsaJwt(
     if (parts.size != 3) throw OAuthServiceAuthException(message = "Malformed JWT")
 
     // Verify signature
-    val signatureBytes = decodeBase64Url(parts[2])
-        ?: throw OAuthServiceAuthException(message = "Invalid JWT signature encoding")
+    val signatureBytes =
+        decodeBase64Url(parts[2])
+            ?: throw OAuthServiceAuthException(message = "Invalid JWT signature encoding")
     val signingInput = "${parts[0]}.${parts[1]}".toByteArray(Charsets.UTF_8)
     val sig = Signature.getInstance("EdDSA")
     sig.initVerify(publicKey)
@@ -191,24 +197,29 @@ private fun verifyEdDsaJwt(
     if (!sig.verify(signatureBytes)) throw OAuthServiceAuthException(message = "JWT signature mismatch")
 
     // Parse claims
-    val claims = try {
-        sharedJson.decodeFromString<JsonObject>(
-            decodeBase64Url(parts[1])!!.toString(Charsets.UTF_8)
-        )
-    } catch (_: Exception) { throw OAuthServiceAuthException(message = "Invalid JWT claims") }
+    val claims =
+        try {
+            sharedJson.decodeFromString<JsonObject>(
+                decodeBase64Url(parts[1])!!.toString(Charsets.UTF_8),
+            )
+        } catch (_: Exception) {
+            throw OAuthServiceAuthException(message = "Invalid JWT claims")
+        }
 
     val iss = claims["iss"]?.jsonPrimitive?.content
     val sub = claims["sub"]?.jsonPrimitive?.content
     val azp = claims["azp"]?.jsonPrimitive?.content
-    val exp = claims["exp"]?.jsonPrimitive?.content?.toLongOrNull()
-        ?: throw OAuthServiceAuthException(message = "Missing JWT exp claim")
+    val exp =
+        claims["exp"]?.jsonPrimitive?.content?.toLongOrNull()
+            ?: throw OAuthServiceAuthException(message = "Missing JWT exp claim")
     val iat = claims["iat"]?.jsonPrimitive?.content?.toLongOrNull() ?: 0L
 
-    val aud: Set<String> = when (val audValue = claims["aud"]) {
-        is kotlinx.serialization.json.JsonPrimitive -> setOf(audValue.content)
-        is JsonArray -> audValue.mapNotNull { it.jsonPrimitive.content }.toSet()
-        else -> emptySet()
-    }
+    val aud: Set<String> =
+        when (val audValue = claims["aud"]) {
+            is kotlinx.serialization.json.JsonPrimitive -> setOf(audValue.content)
+            is JsonArray -> audValue.mapNotNull { it.jsonPrimitive.content }.toSet()
+            else -> emptySet()
+        }
 
     val now = System.currentTimeMillis() / 1_000L
     if (exp + clockSkewSeconds < now) throw OAuthServiceAuthException(message = "JWT expired")
@@ -259,13 +270,15 @@ private fun buildOAuthM2mInternalPlugin(
         }
 
         // Extract kid from JWT header (optional — fall back to first available key)
-        val kid = runCatching {
-            val headerPart = token.split(".").firstOrNull() ?: return@runCatching null
-            val headerJson = sharedJson.decodeFromString<JsonObject>(
-                decodeBase64Url(headerPart)!!.toString(Charsets.UTF_8)
-            )
-            headerJson["kid"]?.jsonPrimitive?.content
-        }.getOrNull()
+        val kid =
+            runCatching {
+                val headerPart = token.split(".").firstOrNull() ?: return@runCatching null
+                val headerJson =
+                    sharedJson.decodeFromString<JsonObject>(
+                        decodeBase64Url(headerPart)!!.toString(Charsets.UTF_8),
+                    )
+                headerJson["kid"]?.jsonPrimitive?.content
+            }.getOrNull()
 
         val publicKey = verifier.getPublicKey(kid)
         if (publicKey == null) {
@@ -273,12 +286,13 @@ private fun buildOAuthM2mInternalPlugin(
             throw OAuthServiceAuthException(message = "No valid public key found")
         }
 
-        val claims = try {
-            verifyEdDsaJwt(token, publicKey, allowedIssuers, allowedAudiences)
-        } catch (e: OAuthServiceAuthException) {
-            logger.warn("[billing:oauth] token verification failed: {}", e.message)
-            throw e
-        }
+        val claims =
+            try {
+                verifyEdDsaJwt(token, publicKey, allowedIssuers, allowedAudiences)
+            } catch (e: OAuthServiceAuthException) {
+                logger.warn("[billing:oauth] token verification failed: {}", e.message)
+                throw e
+            }
 
         val clientId = claims.clientId
         if (allowedServiceClientIds.isNotEmpty() && (clientId == null || clientId !in allowedServiceClientIds)) {
@@ -296,8 +310,7 @@ private fun buildOAuthM2mInternalPlugin(
 val AuthenticatedClientIdKey = io.ktor.util.AttributeKey<String>("authenticatedClientId")
 
 /** Extension to retrieve the authenticated client ID from a call (post-auth). */
-fun io.ktor.server.application.ApplicationCall.authenticatedClientId(): String? =
-    attributes.getOrNull(AuthenticatedClientIdKey)
+fun io.ktor.server.application.ApplicationCall.authenticatedClientId(): String? = attributes.getOrNull(AuthenticatedClientIdKey)
 
 /**
  * Wraps routes inside an OAuth M2M guard.

@@ -156,10 +156,11 @@ class SchemaExtractor(
                     // are not treated as the same container — all List<*> share the same
                     // serialName ("kotlin.collections.ArrayList"), which caused nested lists
                     // to falsely trigger the cycle guard and emit { "type": "object" }.
-                    val key = buildString {
-                        append(desc.serialName)
-                        for (i in 0 until desc.elementsCount) append("<").append(desc.getElementDescriptor(i).serialName).append(">")
-                    }
+                    val key =
+                        buildString {
+                            append(desc.serialName)
+                            for (i in 0 until desc.elementsCount) append("<").append(desc.getElementDescriptor(i).serialName).append(">")
+                        }
                     if (key in currentlyDescribing) {
                         // Cycle detected (e.g. JsonElement ↔ JsonArray) — emit opaque object.
                         return buildJsonObject { put("type", "object") }
