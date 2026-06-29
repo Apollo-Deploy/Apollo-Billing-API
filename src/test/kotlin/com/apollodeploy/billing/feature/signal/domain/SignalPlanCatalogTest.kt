@@ -15,7 +15,6 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SignalPlanCatalogTest {
-
     // ─── 7.1 signalFindPlanByProductId returns correct plan for each of the 6 plans ─────────
 
     @Test
@@ -170,9 +169,10 @@ class SignalPlanCatalogTest {
 
     @Test
     fun `paid plans in ascending price order have non-decreasing monthlySends`() {
-        val paidPlans = signalPlans
-            .filter { it.price > 0 }
-            .sortedBy { it.price }
+        val paidPlans =
+            signalPlans
+                .filter { it.price > 0 }
+                .sortedBy { it.price }
         for (i in 1 until paidPlans.size) {
             assertTrue(
                 paidPlans[i].entitlements.monthlySends >= paidPlans[i - 1].entitlements.monthlySends,
@@ -262,59 +262,64 @@ class SignalPlanCatalogTest {
 
     // Feature: billing-comprehensive-unit-tests, Property 1: Plan lookup by product ID round-trips
     @Test
-    fun `Property 1 - plan lookup by product ID round-trips for all 6 plans`() = runBlocking {
-        // **Property 1: Plan lookup by product ID round-trips**
-        // **Validates: Requirements 19.1**
-        forAll(Arb.element(signalPlans)) { plan ->
-            signalFindPlanByProductId(plan.polarProductId) == plan
+    fun `Property 1 - plan lookup by product ID round-trips for all 6 plans`() =
+        runBlocking {
+            // **Property 1: Plan lookup by product ID round-trips**
+            // **Validates: Requirements 19.1**
+            forAll(Arb.element(signalPlans)) { plan ->
+                signalFindPlanByProductId(plan.polarProductId) == plan
+            }
         }
-    }
 
     // ─── 7.26 Property 2 — AI credit pack slug lookup round-trips ─────────────────────────────
 
     // Feature: billing-comprehensive-unit-tests, Property 2: AI credit pack lookup by slug round-trips
     @Test
-    fun `Property 2 - AI credit pack slug lookup round-trips`() = runBlocking {
-        // **Property 2: AI credit pack lookup by slug round-trips**
-        // **Validates: Requirements 19.2, 9.9**
-        forAll(Arb.element(signalAiCreditTopupPacks)) { pack ->
-            findAiCreditTopupPackBySlug(pack.slug) == pack
+    fun `Property 2 - AI credit pack slug lookup round-trips`() =
+        runBlocking {
+            // **Property 2: AI credit pack lookup by slug round-trips**
+            // **Validates: Requirements 19.2, 9.9**
+            forAll(Arb.element(signalAiCreditTopupPacks)) { pack ->
+                findAiCreditTopupPackBySlug(pack.slug) == pack
+            }
         }
-    }
 
     // ─── 7.27 Property 3 — AI credit pack product ID lookup round-trips ───────────────────────
 
     // Feature: billing-comprehensive-unit-tests, Property 3: AI credit pack lookup by product ID round-trips
     @Test
-    fun `Property 3 - AI credit pack product ID lookup round-trips`() = runBlocking {
-        // **Property 3: AI credit pack lookup by product ID round-trips**
-        // **Validates: Requirements 19.3, 9.10**
-        forAll(Arb.element(signalAiCreditTopupPacks)) { pack ->
-            findAiCreditTopupPackByProductId(pack.polarProductId) == pack
+    fun `Property 3 - AI credit pack product ID lookup round-trips`() =
+        runBlocking {
+            // **Property 3: AI credit pack lookup by product ID round-trips**
+            // **Validates: Requirements 19.3, 9.10**
+            forAll(Arb.element(signalAiCreditTopupPacks)) { pack ->
+                findAiCreditTopupPackByProductId(pack.polarProductId) == pack
+            }
         }
-    }
 
     // ─── 7.28 Property 4 — isMultiRegionAllowedForPlan agrees with plan entitlements ──────────
 
     // Feature: billing-comprehensive-unit-tests, Property 4: Multi-region predicate is consistent with plan catalog data
     @Test
-    fun `Property 4 - isMultiRegionAllowedForPlan agrees with plan entitlements`() = runBlocking {
-        // **Property 4: Multi-region predicate is consistent with plan catalog data**
-        // **Validates: Requirements 19.4, 10.11**
-        forAll(Arb.element(signalPlans)) { plan ->
-            isMultiRegionAllowedForPlan(plan.slug) == plan.entitlements.multiRegion
+    fun `Property 4 - isMultiRegionAllowedForPlan agrees with plan entitlements`() =
+        runBlocking {
+            // **Property 4: Multi-region predicate is consistent with plan catalog data**
+            // **Validates: Requirements 19.4, 10.11**
+            forAll(Arb.element(signalPlans)) { plan ->
+                isMultiRegionAllowedForPlan(plan.slug) == plan.entitlements.multiRegion
+            }
         }
-    }
 
     // ─── 7.29 Property 5 — isDedicatedIpEligibleForPlan agrees with plan entitlements ─────────
 
     // Feature: billing-comprehensive-unit-tests, Property 5: Dedicated IP predicate is consistent with plan catalog data
     @Test
-    fun `Property 5 - isDedicatedIpEligibleForPlan agrees with plan entitlements`() = runBlocking {
-        // **Property 5: Dedicated IP predicate is consistent with plan catalog data**
-        // **Validates: Requirements 19.5, 10.12**
-        forAll(Arb.element(signalPlans)) { plan ->
-            isDedicatedIpEligibleForPlan(plan.slug) == plan.entitlements.dedicatedIps
+    fun `Property 5 - isDedicatedIpEligibleForPlan agrees with plan entitlements`() =
+        runBlocking {
+            // **Property 5: Dedicated IP predicate is consistent with plan catalog data**
+            // **Validates: Requirements 19.5, 10.12**
+            forAll(Arb.element(signalPlans)) { plan ->
+                isDedicatedIpEligibleForPlan(plan.slug) == plan.entitlements.dedicatedIps
+            }
         }
-    }
 }

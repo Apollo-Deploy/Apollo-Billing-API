@@ -5,10 +5,10 @@ import com.apollodeploy.billing.infrastructure.polar.PolarWebhookVerifier
 import com.apollodeploy.billing.infrastructure.validation.UrlValidator
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlin.test.assertFalse
 
 /**
  * Adversarial tests for security infrastructure — directly tests the guard logic.
@@ -22,7 +22,6 @@ import kotlin.test.assertFalse
  *   - The OAuthM2mInternalAuth plugin unit behavior
  */
 class AuthBypassHttpTest {
-
     // ─── PolarWebhookVerifier — adversarial signature tests ───────────────────
 
     @Test

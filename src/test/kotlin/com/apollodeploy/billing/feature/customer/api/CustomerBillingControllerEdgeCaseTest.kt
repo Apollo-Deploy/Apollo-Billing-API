@@ -2,8 +2,8 @@ package com.apollodeploy.billing.feature.customer.api
 
 import com.apollodeploy.billing.feature.customer.application.CustomerBillingService
 import com.apollodeploy.billing.feature.customer.domain.CustomerBillingResult
-import com.apollodeploy.billing.support.noAuthInternalRoutes
 import com.apollodeploy.billing.support.billingTestApplication
+import com.apollodeploy.billing.support.noAuthInternalRoutes
 import com.apollodeploy.billing.support.validServiceToken
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
@@ -26,7 +26,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 
 class CustomerBillingControllerEdgeCaseTest {
-
     private val customerBillingService = mockk<CustomerBillingService>()
     private val controller = CustomerBillingController(customerBillingService)
 
@@ -35,74 +34,82 @@ class CustomerBillingControllerEdgeCaseTest {
     // ─────────────────────────────────────────────────────────────────────────
 
     @Test
-    fun `12_1 - GET payment-methods without orgId query param returns HTTP 400`() = billingTestApplication(
-        routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
-    ) {
-        coEvery { customerBillingService.listPaymentMethods(null, any(), any()) } returns
-            CustomerBillingResult.InvalidRequest("orgId query parameter is required")
+    fun `12_1 - GET payment-methods without orgId query param returns HTTP 400`() =
+        billingTestApplication(
+            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+        ) {
+            coEvery { customerBillingService.listPaymentMethods(null, any(), any()) } returns
+                CustomerBillingResult.InvalidRequest("orgId query parameter is required")
 
-        val response = client.get("/internal/billing/customer/payment-methods") {
-            header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+            val response =
+                client.get("/internal/billing/customer/payment-methods") {
+                    header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+                }
+
+            assertEquals(HttpStatusCode.BadRequest, response.status)
         }
-
-        assertEquals(HttpStatusCode.BadRequest, response.status)
-    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // 12.2: GET payment-methods with whitespace orgId returns HTTP 400
     // ─────────────────────────────────────────────────────────────────────────
 
     @Test
-    fun `12_2 - GET payment-methods with whitespace orgId returns HTTP 400`() = billingTestApplication(
-        routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
-    ) {
-        coEvery { customerBillingService.listPaymentMethods(" ", any(), any()) } returns
-            CustomerBillingResult.InvalidRequest("orgId query parameter is required")
+    fun `12_2 - GET payment-methods with whitespace orgId returns HTTP 400`() =
+        billingTestApplication(
+            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+        ) {
+            coEvery { customerBillingService.listPaymentMethods(" ", any(), any()) } returns
+                CustomerBillingResult.InvalidRequest("orgId query parameter is required")
 
-        val response = client.get("/internal/billing/customer/payment-methods?orgId=%20") {
-            header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+            val response =
+                client.get("/internal/billing/customer/payment-methods?orgId=%20") {
+                    header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+                }
+
+            assertEquals(HttpStatusCode.BadRequest, response.status)
         }
-
-        assertEquals(HttpStatusCode.BadRequest, response.status)
-    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // 12.3: DELETE payment-method without orgId query param returns HTTP 400
     // ─────────────────────────────────────────────────────────────────────────
 
     @Test
-    fun `12_3 - DELETE payment-method without orgId query param returns HTTP 400`() = billingTestApplication(
-        routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
-    ) {
-        coEvery { customerBillingService.deletePaymentMethod(null, any()) } returns
-            CustomerBillingResult.InvalidRequest("orgId query parameter and paymentMethodId path parameter are required")
+    fun `12_3 - DELETE payment-method without orgId query param returns HTTP 400`() =
+        billingTestApplication(
+            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+        ) {
+            coEvery { customerBillingService.deletePaymentMethod(null, any()) } returns
+                CustomerBillingResult.InvalidRequest("orgId query parameter and paymentMethodId path parameter are required")
 
-        val response = client.delete("/internal/billing/customer/payment-methods/pm_abc") {
-            header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+            val response =
+                client.delete("/internal/billing/customer/payment-methods/pm_abc") {
+                    header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+                }
+
+            assertEquals(HttpStatusCode.BadRequest, response.status)
         }
-
-        assertEquals(HttpStatusCode.BadRequest, response.status)
-    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // 12.4: PATCH billing-info with blank orgId body returns HTTP 400
     // ─────────────────────────────────────────────────────────────────────────
 
     @Test
-    fun `12_4 - PATCH billing-info with blank orgId returns HTTP 400`() = billingTestApplication(
-        routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
-    ) {
-        coEvery { customerBillingService.updateBillingInfo(any()) } returns
-            CustomerBillingResult.InvalidRequest("orgId is required")
+    fun `12_4 - PATCH billing-info with blank orgId returns HTTP 400`() =
+        billingTestApplication(
+            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+        ) {
+            coEvery { customerBillingService.updateBillingInfo(any()) } returns
+                CustomerBillingResult.InvalidRequest("orgId is required")
 
-        val response = client.patch("/internal/billing/customer/billing-info") {
-            header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
-            contentType(ContentType.Application.Json)
-            setBody("""{"orgId":"  ","email":"x@x.com"}""")
+            val response =
+                client.patch("/internal/billing/customer/billing-info") {
+                    header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"orgId":"  ","email":"x@x.com"}""")
+                }
+
+            assertEquals(HttpStatusCode.BadRequest, response.status)
         }
-
-        assertEquals(HttpStatusCode.BadRequest, response.status)
-    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // 12.5: PolarFailure with null statusCode returns HTTP 502 with non-blank
@@ -121,11 +128,12 @@ class CustomerBillingControllerEdgeCaseTest {
                     errorBody = null,
                 )
 
-            val response = client.patch("/internal/billing/customer/billing-info") {
-                header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
-                contentType(ContentType.Application.Json)
-                setBody("""{"orgId":"org_1","email":"x@x.com"}""")
-            }
+            val response =
+                client.patch("/internal/billing/customer/billing-info") {
+                    header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"orgId":"org_1","email":"x@x.com"}""")
+                }
 
             assertEquals(HttpStatusCode.BadGateway, response.status)
 
@@ -140,15 +148,17 @@ class CustomerBillingControllerEdgeCaseTest {
     // ─────────────────────────────────────────────────────────────────────────
 
     @Test
-    fun `12_6 - PATCH billing-info missing orgId field returns HTTP 400`() = billingTestApplication(
-        routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
-    ) {
-        val response = client.patch("/internal/billing/customer/billing-info") {
-            header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
-            contentType(ContentType.Application.Json)
-            setBody("{}")
-        }
+    fun `12_6 - PATCH billing-info missing orgId field returns HTTP 400`() =
+        billingTestApplication(
+            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+        ) {
+            val response =
+                client.patch("/internal/billing/customer/billing-info") {
+                    header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+                    contentType(ContentType.Application.Json)
+                    setBody("{}")
+                }
 
-        assertEquals(HttpStatusCode.BadRequest, response.status)
-    }
+            assertEquals(HttpStatusCode.BadRequest, response.status)
+        }
 }

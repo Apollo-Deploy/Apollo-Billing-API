@@ -10,7 +10,6 @@ import com.apollodeploy.billing.support.validServiceToken
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
-import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -18,11 +17,8 @@ import io.ktor.http.contentType
 import io.mockk.coEvery
 import io.mockk.mockk
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 /**
  * Adversarial tests — URL validation bypass attempts on checkout redirect URLs.
@@ -40,26 +36,26 @@ import kotlin.test.assertTrue
  *   - Protocol-relative URLs
  */
 class UrlBypassHttpTest {
-
     private val checkoutService = mockk<CheckoutService>()
     private val controller = CheckoutController(checkoutService)
 
-    private fun checkoutBody(url: String) =
-        """{"orgId":"org_1","appSlug":"signal","productSlug":"signal-ignite","successUrl":"$url"}"""
+    private fun checkoutBody(url: String) = """{"orgId":"org_1","appSlug":"signal","productSlug":"signal-ignite","successUrl":"$url"}"""
 
-    private fun expectRejected(url: String) = billingTestApplication(
-        routes = { noAuthInternalRoutes { checkoutRoutes(controller) } },
-    ) {
-        coEvery { checkoutService.createCheckout(any()) } returns
-            CreateCheckoutResult.InvalidUrl(field = "successUrl", reason = "blocked")
+    private fun expectRejected(url: String) =
+        billingTestApplication(
+            routes = { noAuthInternalRoutes { checkoutRoutes(controller) } },
+        ) {
+            coEvery { checkoutService.createCheckout(any()) } returns
+                CreateCheckoutResult.InvalidUrl(field = "successUrl", reason = "blocked")
 
-        val r = client.post("/internal/billing/checkout") {
-            header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
-            contentType(ContentType.Application.Json)
-            setBody(checkoutBody(url))
+            val r =
+                client.post("/internal/billing/checkout") {
+                    header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+                    contentType(ContentType.Application.Json)
+                    setBody(checkoutBody(url))
+                }
+            assertEquals(HttpStatusCode.BadRequest, r.status, "URL should be blocked: $url")
         }
-        assertEquals(HttpStatusCode.BadRequest, r.status, "URL should be blocked: $url")
-    }
 
     // ─── Scheme bypass attempts ───────────────────────────────────────────────
 
@@ -67,8 +63,7 @@ class UrlBypassHttpTest {
     fun `HTTP scheme is rejected`() = expectRejected("http://evil.com/phish")
 
     @Test
-    fun `HTTPS with port 80 (unusual) on non-allowlisted domain is rejected`() =
-        expectRejected("https://evil.com:80/capture")
+    fun `HTTPS with port 80 (unusual) on non-allowlisted domain is rejected`() = expectRejected("https://evil.com:80/capture")
 
     @Test
     fun `ftp scheme is rejected`() = expectRejected("ftp://evil.com/file")
@@ -123,16 +118,13 @@ class UrlBypassHttpTest {
     fun `non-allowlisted domain is rejected`() = expectRejected("https://evil.com/callback")
 
     @Test
-    fun `subdomain-of-evil that contains allowed domain is rejected`() =
-        expectRejected("https://apollodeploy.com.evil.com/callback")
+    fun `subdomain-of-evil that contains allowed domain is rejected`() = expectRejected("https://apollodeploy.com.evil.com/callback")
 
     @Test
-    fun `allowed domain as subdomain of attacker is rejected`() =
-        expectRejected("https://evil-apollodeploy.com/callback")
+    fun `allowed domain as subdomain of attacker is rejected`() = expectRejected("https://evil-apollodeploy.com/callback")
 
     @Test
-    fun `allowed domain with extra suffix is rejected`() =
-        expectRejected("https://apollodeploy.com.br/callback")
+    fun `allowed domain with extra suffix is rejected`() = expectRejected("https://apollodeploy.com.br/callback")
 
     @Test
     fun `typosquatted domain is rejected`() = expectRejected("https://apollodep1oy.com/callback")
@@ -140,58 +132,62 @@ class UrlBypassHttpTest {
     // ─── Credential injection ─────────────────────────────────────────────────
 
     @Test
-    fun `URL with user info (credentials) is rejected`() =
-        expectRejected("https://admin:password@app.apollodeploy.com/callback")
+    fun `URL with user info (credentials) is rejected`() = expectRejected("https://admin:password@app.apollodeploy.com/callback")
 
     @Test
-    fun `URL with user info before at-sign is rejected`() =
-        expectRejected("https://evil.com@app.apollodeploy.com/callback")
+    fun `URL with user info before at-sign is rejected`() = expectRejected("https://evil.com@app.apollodeploy.com/callback")
 
     // ─── Valid URLs that SHOULD pass ──────────────────────────────────────────
 
     @Test
-    fun `valid HTTPS on apollodeploy_com passes`() = billingTestApplication(
-        routes = { noAuthInternalRoutes { checkoutRoutes(controller) } },
-    ) {
-        coEvery { checkoutService.createCheckout(any()) } returns
-            CreateCheckoutResult.UnknownProduct("signal", "signal-ignite")
+    fun `valid HTTPS on apollodeploy_com passes`() =
+        billingTestApplication(
+            routes = { noAuthInternalRoutes { checkoutRoutes(controller) } },
+        ) {
+            coEvery { checkoutService.createCheckout(any()) } returns
+                CreateCheckoutResult.UnknownProduct("signal", "signal-ignite")
 
-        val r = client.post("/internal/billing/checkout") {
-            header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
-            contentType(ContentType.Application.Json)
-            setBody(checkoutBody("https://app.apollodeploy.com/billing/success"))
+            val r =
+                client.post("/internal/billing/checkout") {
+                    header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+                    contentType(ContentType.Application.Json)
+                    setBody(checkoutBody("https://app.apollodeploy.com/billing/success"))
+                }
+            // 422 = product not found = URL passed validation
+            assertEquals(HttpStatusCode.UnprocessableEntity, r.status)
         }
-        // 422 = product not found = URL passed validation
-        assertEquals(HttpStatusCode.UnprocessableEntity, r.status)
-    }
 
     @Test
-    fun `valid HTTPS with path segments passes`() = billingTestApplication(
-        routes = { noAuthInternalRoutes { checkoutRoutes(controller) } },
-    ) {
-        coEvery { checkoutService.createCheckout(any()) } returns
-            CreateCheckoutResult.UnknownProduct("signal", "signal-ignite")
+    fun `valid HTTPS with path segments passes`() =
+        billingTestApplication(
+            routes = { noAuthInternalRoutes { checkoutRoutes(controller) } },
+        ) {
+            coEvery { checkoutService.createCheckout(any()) } returns
+                CreateCheckoutResult.UnknownProduct("signal", "signal-ignite")
 
-        val r = client.post("/internal/billing/checkout") {
-            header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
-            contentType(ContentType.Application.Json)
-            setBody(checkoutBody("https://signal.apollodeploy.com/settings/billing/return"))
+            val r =
+                client.post("/internal/billing/checkout") {
+                    header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+                    contentType(ContentType.Application.Json)
+                    setBody(checkoutBody("https://signal.apollodeploy.com/settings/billing/return"))
+                }
+            assertEquals(HttpStatusCode.UnprocessableEntity, r.status)
         }
-        assertEquals(HttpStatusCode.UnprocessableEntity, r.status)
-    }
 
     @Test
-    fun `null successUrl passes (optional field)`() = billingTestApplication(
-        routes = { noAuthInternalRoutes { checkoutRoutes(controller) } },
-    ) {
-        coEvery { checkoutService.createCheckout(any()) } returns
-            CreateCheckoutResult.UnknownProduct("signal", "signal-ignite")
+    fun `null successUrl passes (optional field)`() =
+        billingTestApplication(
+            routes = { noAuthInternalRoutes { checkoutRoutes(controller) } },
+        ) {
+            coEvery { checkoutService.createCheckout(any()) } returns
+                CreateCheckoutResult.UnknownProduct("signal", "signal-ignite")
 
-        val r = client.post("/internal/billing/checkout") {
-            header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
-            contentType(ContentType.Application.Json)
-            setBody("""{"orgId":"org_1","appSlug":"signal","productSlug":"signal-ignite"}""")
+            val r =
+                client.post("/internal/billing/checkout") {
+                    header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"orgId":"org_1","appSlug":"signal","productSlug":"signal-ignite"}""")
+                }
+            assertEquals(HttpStatusCode.UnprocessableEntity, r.status)
         }
-        assertEquals(HttpStatusCode.UnprocessableEntity, r.status)
-    }
 }

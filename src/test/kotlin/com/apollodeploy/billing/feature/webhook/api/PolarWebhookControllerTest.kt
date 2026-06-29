@@ -23,7 +23,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class PolarWebhookControllerTest {
-
     private val polarWebhookService = mockk<PolarWebhookService>()
     private val controller = PolarWebhookController(polarWebhookService)
 
@@ -40,122 +39,132 @@ class PolarWebhookControllerTest {
     }
 
     @Test
-    fun `POST webhooks polar - Received returns HTTP 200 with received true`() = billingTestApplication(
-        routes = { polarWebhookRoutes(controller) },
-    ) {
-        val body = """{"type":"subscription.created"}"""
-        val webhookId = "wh_test_123"
-        val timestamp = "1700000000"
-        val secret = "test-webhook-secret"
-        val signature = signWebhook(body.toByteArray(), webhookId, timestamp, secret)
+    fun `POST webhooks polar - Received returns HTTP 200 with received true`() =
+        billingTestApplication(
+            routes = { polarWebhookRoutes(controller) },
+        ) {
+            val body = """{"type":"subscription.created"}"""
+            val webhookId = "wh_test_123"
+            val timestamp = "1700000000"
+            val secret = "test-webhook-secret"
+            val signature = signWebhook(body.toByteArray(), webhookId, timestamp, secret)
 
-        coEvery { polarWebhookService.receive(any(), any(), any(), any()) } returns PolarWebhookResult.Received
+            coEvery { polarWebhookService.receive(any(), any(), any(), any()) } returns PolarWebhookResult.Received
 
-        val response = client.post("/webhooks/polar") {
-            contentType(ContentType.Application.Json)
-            header("webhook-id", webhookId)
-            header("webhook-timestamp", timestamp)
-            header("webhook-signature", signature)
-            setBody(body)
+            val response =
+                client.post("/webhooks/polar") {
+                    contentType(ContentType.Application.Json)
+                    header("webhook-id", webhookId)
+                    header("webhook-timestamp", timestamp)
+                    header("webhook-signature", signature)
+                    setBody(body)
+                }
+
+            assertEquals(HttpStatusCode.OK, response.status)
+            val responseBody = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+            assertEquals(true, responseBody["received"]?.jsonPrimitive?.boolean)
         }
-
-        assertEquals(HttpStatusCode.OK, response.status)
-        val responseBody = Json.parseToJsonElement(response.bodyAsText()).jsonObject
-        assertEquals(true, responseBody["received"]?.jsonPrimitive?.boolean)
-    }
 
     @Test
-    fun `POST webhooks polar - InvalidSignature returns HTTP 401 with error invalid_signature`() = billingTestApplication(
-        routes = { polarWebhookRoutes(controller) },
-    ) {
-        val body = """{"type":"subscription.created"}"""
-        val webhookId = "wh_test_123"
-        val timestamp = "1700000000"
-        val signature = signWebhook(body.toByteArray(), webhookId, timestamp, "some-secret")
+    fun `POST webhooks polar - InvalidSignature returns HTTP 401 with error invalid_signature`() =
+        billingTestApplication(
+            routes = { polarWebhookRoutes(controller) },
+        ) {
+            val body = """{"type":"subscription.created"}"""
+            val webhookId = "wh_test_123"
+            val timestamp = "1700000000"
+            val signature = signWebhook(body.toByteArray(), webhookId, timestamp, "some-secret")
 
-        coEvery { polarWebhookService.receive(any(), any(), any(), any()) } returns PolarWebhookResult.InvalidSignature
+            coEvery { polarWebhookService.receive(any(), any(), any(), any()) } returns PolarWebhookResult.InvalidSignature
 
-        val response = client.post("/webhooks/polar") {
-            contentType(ContentType.Application.Json)
-            header("webhook-id", webhookId)
-            header("webhook-timestamp", timestamp)
-            header("webhook-signature", signature)
-            setBody(body)
+            val response =
+                client.post("/webhooks/polar") {
+                    contentType(ContentType.Application.Json)
+                    header("webhook-id", webhookId)
+                    header("webhook-timestamp", timestamp)
+                    header("webhook-signature", signature)
+                    setBody(body)
+                }
+
+            assertEquals(HttpStatusCode.Unauthorized, response.status)
+            val responseBody = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+            assertEquals("invalid_signature", responseBody["error"]?.jsonPrimitive?.content)
         }
-
-        assertEquals(HttpStatusCode.Unauthorized, response.status)
-        val responseBody = Json.parseToJsonElement(response.bodyAsText()).jsonObject
-        assertEquals("invalid_signature", responseBody["error"]?.jsonPrimitive?.content)
-    }
 
     @Test
-    fun `POST webhooks polar - InvalidPayload returns HTTP 400 with error invalid_payload`() = billingTestApplication(
-        routes = { polarWebhookRoutes(controller) },
-    ) {
-        val body = """{"type":"subscription.created"}"""
-        val webhookId = "wh_test_123"
-        val timestamp = "1700000000"
-        val signature = signWebhook(body.toByteArray(), webhookId, timestamp, "some-secret")
+    fun `POST webhooks polar - InvalidPayload returns HTTP 400 with error invalid_payload`() =
+        billingTestApplication(
+            routes = { polarWebhookRoutes(controller) },
+        ) {
+            val body = """{"type":"subscription.created"}"""
+            val webhookId = "wh_test_123"
+            val timestamp = "1700000000"
+            val signature = signWebhook(body.toByteArray(), webhookId, timestamp, "some-secret")
 
-        coEvery { polarWebhookService.receive(any(), any(), any(), any()) } returns PolarWebhookResult.InvalidPayload
+            coEvery { polarWebhookService.receive(any(), any(), any(), any()) } returns PolarWebhookResult.InvalidPayload
 
-        val response = client.post("/webhooks/polar") {
-            contentType(ContentType.Application.Json)
-            header("webhook-id", webhookId)
-            header("webhook-timestamp", timestamp)
-            header("webhook-signature", signature)
-            setBody(body)
+            val response =
+                client.post("/webhooks/polar") {
+                    contentType(ContentType.Application.Json)
+                    header("webhook-id", webhookId)
+                    header("webhook-timestamp", timestamp)
+                    header("webhook-signature", signature)
+                    setBody(body)
+                }
+
+            assertEquals(HttpStatusCode.BadRequest, response.status)
+            val responseBody = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+            assertEquals("invalid_payload", responseBody["error"]?.jsonPrimitive?.content)
         }
-
-        assertEquals(HttpStatusCode.BadRequest, response.status)
-        val responseBody = Json.parseToJsonElement(response.bodyAsText()).jsonObject
-        assertEquals("invalid_payload", responseBody["error"]?.jsonPrimitive?.content)
-    }
 
     @Test
-    fun `POST webhooks polar - HandlerError returns HTTP 500 with error handler_error`() = billingTestApplication(
-        routes = { polarWebhookRoutes(controller) },
-    ) {
-        val body = """{"type":"subscription.created"}"""
-        val webhookId = "wh_test_123"
-        val timestamp = "1700000000"
-        val signature = signWebhook(body.toByteArray(), webhookId, timestamp, "some-secret")
+    fun `POST webhooks polar - HandlerError returns HTTP 500 with error handler_error`() =
+        billingTestApplication(
+            routes = { polarWebhookRoutes(controller) },
+        ) {
+            val body = """{"type":"subscription.created"}"""
+            val webhookId = "wh_test_123"
+            val timestamp = "1700000000"
+            val signature = signWebhook(body.toByteArray(), webhookId, timestamp, "some-secret")
 
-        coEvery { polarWebhookService.receive(any(), any(), any(), any()) } returns PolarWebhookResult.HandlerError
+            coEvery { polarWebhookService.receive(any(), any(), any(), any()) } returns PolarWebhookResult.HandlerError
 
-        val response = client.post("/webhooks/polar") {
-            contentType(ContentType.Application.Json)
-            header("webhook-id", webhookId)
-            header("webhook-timestamp", timestamp)
-            header("webhook-signature", signature)
-            setBody(body)
+            val response =
+                client.post("/webhooks/polar") {
+                    contentType(ContentType.Application.Json)
+                    header("webhook-id", webhookId)
+                    header("webhook-timestamp", timestamp)
+                    header("webhook-signature", signature)
+                    setBody(body)
+                }
+
+            assertEquals(HttpStatusCode.InternalServerError, response.status)
+            val responseBody = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+            assertEquals("handler_error", responseBody["error"]?.jsonPrimitive?.content)
         }
-
-        assertEquals(HttpStatusCode.InternalServerError, response.status)
-        val responseBody = Json.parseToJsonElement(response.bodyAsText()).jsonObject
-        assertEquals("handler_error", responseBody["error"]?.jsonPrimitive?.content)
-    }
 
     @Test
-    fun `POST webhooks polar - no Authorization header required`() = billingTestApplication(
-        routes = { polarWebhookRoutes(controller) },
-    ) {
-        val body = """{"type":"subscription.created"}"""
-        val webhookId = "wh_test_no_auth"
-        val timestamp = "1700000000"
-        val signature = signWebhook(body.toByteArray(), webhookId, timestamp, "some-secret")
+    fun `POST webhooks polar - no Authorization header required`() =
+        billingTestApplication(
+            routes = { polarWebhookRoutes(controller) },
+        ) {
+            val body = """{"type":"subscription.created"}"""
+            val webhookId = "wh_test_no_auth"
+            val timestamp = "1700000000"
+            val signature = signWebhook(body.toByteArray(), webhookId, timestamp, "some-secret")
 
-        coEvery { polarWebhookService.receive(any(), any(), any(), any()) } returns PolarWebhookResult.Received
+            coEvery { polarWebhookService.receive(any(), any(), any(), any()) } returns PolarWebhookResult.Received
 
-        // Intentionally no Authorization header — public endpoint
-        val response = client.post("/webhooks/polar") {
-            contentType(ContentType.Application.Json)
-            header("webhook-id", webhookId)
-            header("webhook-timestamp", timestamp)
-            header("webhook-signature", signature)
-            setBody(body)
+            // Intentionally no Authorization header — public endpoint
+            val response =
+                client.post("/webhooks/polar") {
+                    contentType(ContentType.Application.Json)
+                    header("webhook-id", webhookId)
+                    header("webhook-timestamp", timestamp)
+                    header("webhook-signature", signature)
+                    setBody(body)
+                }
+
+            assertEquals(HttpStatusCode.OK, response.status)
         }
-
-        assertEquals(HttpStatusCode.OK, response.status)
-    }
 }

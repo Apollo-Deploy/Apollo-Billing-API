@@ -14,30 +14,30 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class SignalBillingConfigTest {
-
     // A baseline PlanEntitlements with all int fields = 1 and dataRetentionDays = 30,
     // used as a starting point for limit-exclusion tests.
-    private val baseEntitlements = PlanEntitlements(
-        maxProjects = 1,
-        maxDomains = 1,
-        maxWebhooks = 1,
-        maxApiKeys = 1,
-        dailySends = 1,
-        monthlySends = 1,
-        aiCredits = 1,
-        dataRetentionDays = 30,
-        customTrackingDomain = false,
-        advancedWebhooks = false,
-        signedWebhooks = false,
-        readEngagement = false,
-        enrichedTracking = false,
-        forwardingDetection = false,
-        deliverabilityAdvisor = false,
-        realtimeStream = false,
-        sendTimeOptimisation = false,
-        dedicatedIps = false,
-        multiRegion = false,
-    )
+    private val baseEntitlements =
+        PlanEntitlements(
+            maxProjects = 1,
+            maxDomains = 1,
+            maxWebhooks = 1,
+            maxApiKeys = 1,
+            dailySends = 1,
+            monthlySends = 1,
+            aiCredits = 1,
+            dataRetentionDays = 30,
+            customTrackingDomain = false,
+            advancedWebhooks = false,
+            signedWebhooks = false,
+            readEngagement = false,
+            enrichedTracking = false,
+            forwardingDetection = false,
+            deliverabilityAdvisor = false,
+            realtimeStream = false,
+            sendTimeOptimisation = false,
+            dedicatedIps = false,
+            multiRegion = false,
+        )
 
     // ─── 8.1 ─────────────────────────────────────────────────────────────────
 
@@ -88,19 +88,20 @@ class SignalBillingConfigTest {
     fun `features map contains exactly 11 keys`() {
         val config = baseEntitlements.toPlanFeatureConfig()
 
-        val expectedKeys = setOf(
-            "customTrackingDomain",
-            "advancedWebhooks",
-            "signedWebhooks",
-            "readEngagement",
-            "enrichedTracking",
-            "forwardingDetection",
-            "deliverabilityAdvisor",
-            "realtimeStream",
-            "sendTimeOptimisation",
-            "dedicatedIps",
-            "multiRegion",
-        )
+        val expectedKeys =
+            setOf(
+                "customTrackingDomain",
+                "advancedWebhooks",
+                "signedWebhooks",
+                "readEngagement",
+                "enrichedTracking",
+                "forwardingDetection",
+                "deliverabilityAdvisor",
+                "realtimeStream",
+                "sendTimeOptimisation",
+                "dedicatedIps",
+                "multiRegion",
+            )
         assertEquals(expectedKeys, config.features.keys)
     }
 
@@ -128,27 +129,31 @@ class SignalBillingConfigTest {
     // **Validates: Requirements 22.1, 8.5**
 
     @Test
-    fun `property - features map always has exactly 11 keys for all 6 plans (Property 8)`() = runBlocking {
-        val expectedKeys = setOf(
-            "customTrackingDomain",
-            "advancedWebhooks",
-            "signedWebhooks",
-            "readEngagement",
-            "enrichedTracking",
-            "forwardingDetection",
-            "deliverabilityAdvisor",
-            "realtimeStream",
-            "sendTimeOptimisation",
-            "dedicatedIps",
-            "multiRegion",
-        )
+    fun `property - features map always has exactly 11 keys for all 6 plans (Property 8)`() =
+        runBlocking {
+            val expectedKeys =
+                setOf(
+                    "customTrackingDomain",
+                    "advancedWebhooks",
+                    "signedWebhooks",
+                    "readEngagement",
+                    "enrichedTracking",
+                    "forwardingDetection",
+                    "deliverabilityAdvisor",
+                    "realtimeStream",
+                    "sendTimeOptimisation",
+                    "dedicatedIps",
+                    "multiRegion",
+                )
 
-        forAll(Arb.element(signalPlans)) { plan ->
-            plan.entitlements.toPlanFeatureConfig().features.keys == expectedKeys
+            forAll(Arb.element(signalPlans)) { plan ->
+                plan.entitlements
+                    .toPlanFeatureConfig()
+                    .features.keys == expectedKeys
+            }
+
+            Unit
         }
-
-        Unit
-    }
 
     // ─── 8.8 — Property 9 ────────────────────────────────────────────────────
     // Feature: billing-comprehensive-unit-tests, Property 9: toPlanFeatureConfig limits never contain zero values
@@ -157,13 +162,17 @@ class SignalBillingConfigTest {
     // **Validates: Requirements 22.2, 8.7**
 
     @Test
-    fun `property - limits never contain zero values for all 6 plans (Property 9)`() = runBlocking {
-        forAll(Arb.element(signalPlans)) { plan ->
-            plan.entitlements.toPlanFeatureConfig().limits.values.none { it == 0 }
-        }
+    fun `property - limits never contain zero values for all 6 plans (Property 9)`() =
+        runBlocking {
+            forAll(Arb.element(signalPlans)) { plan ->
+                plan.entitlements
+                    .toPlanFeatureConfig()
+                    .limits.values
+                    .none { it == 0 }
+            }
 
-        Unit
-    }
+            Unit
+        }
 
     // ─── 8.9 — Property 10 ───────────────────────────────────────────────────
     // Feature: billing-comprehensive-unit-tests, Property 10: toPlanFeatureConfig limits always include "dataRetentionDays"
@@ -172,11 +181,12 @@ class SignalBillingConfigTest {
     // **Validates: Requirements 22.3, 8.4**
 
     @Test
-    fun `property - limits always include dataRetentionDays for all 6 plans (Property 10)`() = runBlocking {
-        forAll(Arb.element(signalPlans)) { plan ->
-            "dataRetentionDays" in plan.entitlements.toPlanFeatureConfig().limits
-        }
+    fun `property - limits always include dataRetentionDays for all 6 plans (Property 10)`() =
+        runBlocking {
+            forAll(Arb.element(signalPlans)) { plan ->
+                "dataRetentionDays" in plan.entitlements.toPlanFeatureConfig().limits
+            }
 
-        Unit
-    }
+            Unit
+        }
 }

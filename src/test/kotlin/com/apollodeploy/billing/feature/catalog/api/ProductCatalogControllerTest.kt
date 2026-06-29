@@ -24,7 +24,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
 class ProductCatalogControllerTest {
-
     private val service = mockk<ProductCatalogService>()
     private val controller = ProductCatalogController(service)
 
@@ -33,33 +32,35 @@ class ProductCatalogControllerTest {
     // -----------------------------------------------------------------
 
     @Test
-    fun `getCatalog Found returns HTTP 200 with appSlug and products array`() = billingTestApplication(
-        routes = { productCatalogRoutes(controller) },
-    ) {
-        coEvery { service.getCatalog("signal") } returns
-            ProductCatalogResult.Found(ProductCatalogResponse("signal", emptyList()))
+    fun `getCatalog Found returns HTTP 200 with appSlug and products array`() =
+        billingTestApplication(
+            routes = { productCatalogRoutes(controller) },
+        ) {
+            coEvery { service.getCatalog("signal") } returns
+                ProductCatalogResult.Found(ProductCatalogResponse("signal", emptyList()))
 
-        val response = client.get("/billing/catalog/signal")
+            val response = client.get("/billing/catalog/signal")
 
-        assertEquals(HttpStatusCode.OK, response.status)
-        val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
-        assertEquals("signal", body["appSlug"]?.jsonPrimitive?.content)
-        assertIs<JsonArray>(body["products"])
-    }
+            assertEquals(HttpStatusCode.OK, response.status)
+            val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+            assertEquals("signal", body["appSlug"]?.jsonPrimitive?.content)
+            assertIs<JsonArray>(body["products"])
+        }
 
     @Test
-    fun `getCatalog UnknownApp returns HTTP 404 with billing_unknown_app code`() = billingTestApplication(
-        routes = { productCatalogRoutes(controller) },
-    ) {
-        coEvery { service.getCatalog("unknown-app") } returns
-            ProductCatalogResult.UnknownApp("unknown-app")
+    fun `getCatalog UnknownApp returns HTTP 404 with billing_unknown_app code`() =
+        billingTestApplication(
+            routes = { productCatalogRoutes(controller) },
+        ) {
+            coEvery { service.getCatalog("unknown-app") } returns
+                ProductCatalogResult.UnknownApp("unknown-app")
 
-        val response = client.get("/billing/catalog/unknown-app")
+            val response = client.get("/billing/catalog/unknown-app")
 
-        assertEquals(HttpStatusCode.NotFound, response.status)
-        val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
-        assertEquals("billing.unknown_app", body["code"]?.jsonPrimitive?.content)
-    }
+            assertEquals(HttpStatusCode.NotFound, response.status)
+            val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+            assertEquals("billing.unknown_app", body["code"]?.jsonPrimitive?.content)
+        }
 
     @Test
     fun `getCatalog PricingUnavailable returns HTTP 502 with billing_catalog_pricing_unavailable code`() =
@@ -81,28 +82,29 @@ class ProductCatalogControllerTest {
     // -----------------------------------------------------------------
 
     @Test
-    fun `Property 2 - appSlug is preserved in Found response for any non-blank appSlug`() = runBlocking {
-        // Use URL-safe alphanumeric strings to avoid URLDecodeException when used as path segments
-        val nonBlankString = Arb.string(minSize = 1, maxSize = 50, codepoints = Codepoint.az())
+    fun `Property 2 - appSlug is preserved in Found response for any non-blank appSlug`() =
+        runBlocking {
+            // Use URL-safe alphanumeric strings to avoid URLDecodeException when used as path segments
+            val nonBlankString = Arb.string(minSize = 1, maxSize = 50, codepoints = Codepoint.az())
 
-        forAll(nonBlankString) { appSlug ->
-            var result = false
-            billingTestApplication(
-                routes = { productCatalogRoutes(controller) },
-            ) {
-                coEvery { service.getCatalog(appSlug) } returns
-                    ProductCatalogResult.Found(ProductCatalogResponse(appSlug, emptyList()))
+            forAll(nonBlankString) { appSlug ->
+                var result = false
+                billingTestApplication(
+                    routes = { productCatalogRoutes(controller) },
+                ) {
+                    coEvery { service.getCatalog(appSlug) } returns
+                        ProductCatalogResult.Found(ProductCatalogResponse(appSlug, emptyList()))
 
-                val response = client.get("/billing/catalog/$appSlug")
-                if (response.status == HttpStatusCode.OK) {
-                    val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
-                    result = body["appSlug"]?.jsonPrimitive?.content == appSlug
+                    val response = client.get("/billing/catalog/$appSlug")
+                    if (response.status == HttpStatusCode.OK) {
+                        val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+                        result = body["appSlug"]?.jsonPrimitive?.content == appSlug
+                    }
                 }
+                result
             }
-            result
+            Unit
         }
-        Unit
-    }
 
     // -----------------------------------------------------------------
     // Property 3: UnknownApp always produces 404 with billing.unknown_app

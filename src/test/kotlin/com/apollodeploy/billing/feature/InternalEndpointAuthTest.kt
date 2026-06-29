@@ -24,8 +24,8 @@ import com.apollodeploy.billing.feature.usage.api.UsageIngestController
 import com.apollodeploy.billing.feature.usage.api.usageIngestRoutes
 import com.apollodeploy.billing.feature.usage.application.UsageIngestService
 import com.apollodeploy.billing.feature.usage.domain.UsageIngestResponse
-import com.apollodeploy.billing.support.noAuthInternalRoutes
 import com.apollodeploy.billing.support.billingTestApplication
+import com.apollodeploy.billing.support.noAuthInternalRoutes
 import com.apollodeploy.billing.support.validServiceToken
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
@@ -53,7 +53,6 @@ import kotlin.test.assertNotEquals
  * **Validates: Requirements 1.3**
  */
 class InternalEndpointAuthTest {
-
     // ── Enforce ──────────────────────────────────────────────────────────────
     private val enforceService = mockk<EnforceService>()
     private val enforceController = EnforceController(enforceService)
@@ -79,147 +78,161 @@ class InternalEndpointAuthTest {
     // ─────────────────────────────────────────────────────────────────────────
 
     @Test
-    fun `valid JWT is accepted on POST internal billing enforce`() = billingTestApplication(
-        routes = { noAuthInternalRoutes { enforceRoutes(enforceController) } },
-    ) {
-        coEvery { enforceService.enforce(any(), any()) } returns EnforceResult.Allowed
+    fun `valid JWT is accepted on POST internal billing enforce`() =
+        billingTestApplication(
+            routes = { noAuthInternalRoutes { enforceRoutes(enforceController) } },
+        ) {
+            coEvery { enforceService.enforce(any(), any()) } returns EnforceResult.Allowed
 
-        val response = client.post("/internal/billing/enforce") {
-            header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
-            contentType(ContentType.Application.Json)
-            setBody("""{"orgId":"org_1","appSlug":"signal","check":{"type":"feature","feature":"deployments"}}""")
+            val response =
+                client.post("/internal/billing/enforce") {
+                    header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"orgId":"org_1","appSlug":"signal","check":{"type":"feature","feature":"deployments"}}""")
+                }
+
+            assertNotEquals(HttpStatusCode.Unauthorized, response.status)
         }
-
-        assertNotEquals(HttpStatusCode.Unauthorized, response.status)
-    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Test 2 — GET /internal/billing/entitlements/signal/org_1
     // ─────────────────────────────────────────────────────────────────────────
 
     @Test
-    fun `valid JWT is accepted on GET internal billing entitlements`() = billingTestApplication(
-        routes = { noAuthInternalRoutes { entitlementsRoutes(entitlementsController) } },
-    ) {
-        coEvery { entitlementsService.getEntitlements(any(), any()) } returns
-            EntitlementsResult.Found(
-                EntitlementsResponse(
-                    appSlug = "signal",
-                    orgId = "org_1",
-                    planId = "plan_free",
-                    limits = emptyMap(),
-                    features = emptyMap(),
-                    usage = emptyMap(),
-                    remaining = emptyMap(),
-                ),
-            )
+    fun `valid JWT is accepted on GET internal billing entitlements`() =
+        billingTestApplication(
+            routes = { noAuthInternalRoutes { entitlementsRoutes(entitlementsController) } },
+        ) {
+            coEvery { entitlementsService.getEntitlements(any(), any()) } returns
+                EntitlementsResult.Found(
+                    EntitlementsResponse(
+                        appSlug = "signal",
+                        orgId = "org_1",
+                        planId = "plan_free",
+                        limits = emptyMap(),
+                        features = emptyMap(),
+                        usage = emptyMap(),
+                        remaining = emptyMap(),
+                    ),
+                )
 
-        val response = client.get("/internal/billing/entitlements/signal/org_1") {
-            header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+            val response =
+                client.get("/internal/billing/entitlements/signal/org_1") {
+                    header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+                }
+
+            assertNotEquals(HttpStatusCode.Unauthorized, response.status)
         }
-
-        assertNotEquals(HttpStatusCode.Unauthorized, response.status)
-    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Test 3 — POST /internal/billing/checkout
     // ─────────────────────────────────────────────────────────────────────────
 
     @Test
-    fun `valid JWT is accepted on POST internal billing checkout`() = billingTestApplication(
-        routes = { noAuthInternalRoutes { checkoutRoutes(checkoutController) } },
-    ) {
-        coEvery { checkoutService.createCheckout(any()) } returns
-            CreateCheckoutResult.Created(
-                CreateCheckoutResponse(
-                    id = "chk_123",
-                    url = "https://checkout.polar.sh/chk_123",
-                    expiresAt = null,
-                    productKind = "subscription",
-                ),
-            )
+    fun `valid JWT is accepted on POST internal billing checkout`() =
+        billingTestApplication(
+            routes = { noAuthInternalRoutes { checkoutRoutes(checkoutController) } },
+        ) {
+            coEvery { checkoutService.createCheckout(any()) } returns
+                CreateCheckoutResult.Created(
+                    CreateCheckoutResponse(
+                        id = "chk_123",
+                        url = "https://checkout.polar.sh/chk_123",
+                        expiresAt = null,
+                        productKind = "subscription",
+                    ),
+                )
 
-        val response = client.post("/internal/billing/checkout") {
-            header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
-            contentType(ContentType.Application.Json)
-            setBody("""{"orgId":"org_1","appSlug":"signal","productSlug":"signal-pro"}""")
+            val response =
+                client.post("/internal/billing/checkout") {
+                    header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"orgId":"org_1","appSlug":"signal","productSlug":"signal-pro"}""")
+                }
+
+            assertNotEquals(HttpStatusCode.Unauthorized, response.status)
         }
-
-        assertNotEquals(HttpStatusCode.Unauthorized, response.status)
-    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Test 4 — PATCH /internal/billing/customer/billing-info
     // ─────────────────────────────────────────────────────────────────────────
 
     @Test
-    fun `valid JWT is accepted on PATCH internal billing customer billing-info`() = billingTestApplication(
-        routes = { noAuthInternalRoutes { customerBillingRoutes(customerBillingController) } },
-    ) {
-        coEvery { customerBillingService.updateBillingInfo(any()) } returns
-            CustomerBillingResult.Success(UpdateCustomerBillingInfoResponse(buildJsonObject {}))
+    fun `valid JWT is accepted on PATCH internal billing customer billing-info`() =
+        billingTestApplication(
+            routes = { noAuthInternalRoutes { customerBillingRoutes(customerBillingController) } },
+        ) {
+            coEvery { customerBillingService.updateBillingInfo(any()) } returns
+                CustomerBillingResult.Success(UpdateCustomerBillingInfoResponse(buildJsonObject {}))
 
-        val response = client.patch("/internal/billing/customer/billing-info") {
-            header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
-            contentType(ContentType.Application.Json)
-            setBody("""{"orgId":"org_1","email":"test@example.com"}""")
+            val response =
+                client.patch("/internal/billing/customer/billing-info") {
+                    header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"orgId":"org_1","email":"test@example.com"}""")
+                }
+
+            assertNotEquals(HttpStatusCode.Unauthorized, response.status)
         }
-
-        assertNotEquals(HttpStatusCode.Unauthorized, response.status)
-    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Test 5 — GET /internal/billing/customer/payment-methods?orgId=org_1
     // ─────────────────────────────────────────────────────────────────────────
 
     @Test
-    fun `valid JWT is accepted on GET internal billing customer payment-methods`() = billingTestApplication(
-        routes = { noAuthInternalRoutes { customerBillingRoutes(customerBillingController) } },
-    ) {
-        coEvery { customerBillingService.listPaymentMethods(any(), any(), any()) } returns
-            CustomerBillingResult.Success(ListCustomerPaymentMethodsResponse(buildJsonObject {}))
+    fun `valid JWT is accepted on GET internal billing customer payment-methods`() =
+        billingTestApplication(
+            routes = { noAuthInternalRoutes { customerBillingRoutes(customerBillingController) } },
+        ) {
+            coEvery { customerBillingService.listPaymentMethods(any(), any(), any()) } returns
+                CustomerBillingResult.Success(ListCustomerPaymentMethodsResponse(buildJsonObject {}))
 
-        val response = client.get("/internal/billing/customer/payment-methods?orgId=org_1") {
-            header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+            val response =
+                client.get("/internal/billing/customer/payment-methods?orgId=org_1") {
+                    header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+                }
+
+            assertNotEquals(HttpStatusCode.Unauthorized, response.status)
         }
-
-        assertNotEquals(HttpStatusCode.Unauthorized, response.status)
-    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Test 6 — DELETE /internal/billing/customer/payment-methods/pm_abc
     // ─────────────────────────────────────────────────────────────────────────
 
     @Test
-    fun `valid JWT is accepted on DELETE internal billing customer payment-method`() = billingTestApplication(
-        routes = { noAuthInternalRoutes { customerBillingRoutes(customerBillingController) } },
-    ) {
-        coEvery { customerBillingService.deletePaymentMethod(any(), any()) } returns
-            CustomerBillingResult.Success(Unit)
+    fun `valid JWT is accepted on DELETE internal billing customer payment-method`() =
+        billingTestApplication(
+            routes = { noAuthInternalRoutes { customerBillingRoutes(customerBillingController) } },
+        ) {
+            coEvery { customerBillingService.deletePaymentMethod(any(), any()) } returns
+                CustomerBillingResult.Success(Unit)
 
-        val response = client.delete("/internal/billing/customer/payment-methods/pm_abc?orgId=org_1") {
-            header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+            val response =
+                client.delete("/internal/billing/customer/payment-methods/pm_abc?orgId=org_1") {
+                    header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+                }
+
+            assertNotEquals(HttpStatusCode.Unauthorized, response.status)
         }
-
-        assertNotEquals(HttpStatusCode.Unauthorized, response.status)
-    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Test 7 — POST /internal/billing/usage/ingest
     // ─────────────────────────────────────────────────────────────────────────
 
     @Test
-    fun `valid JWT is accepted on POST internal billing usage ingest`() = billingTestApplication(
-        routes = { noAuthInternalRoutes { usageIngestRoutes(usageIngestController) } },
-    ) {
-        coEvery { usageIngestService.ingest(any()) } returns UsageIngestResponse(accepted = true)
+    fun `valid JWT is accepted on POST internal billing usage ingest`() =
+        billingTestApplication(
+            routes = { noAuthInternalRoutes { usageIngestRoutes(usageIngestController) } },
+        ) {
+            coEvery { usageIngestService.ingest(any()) } returns UsageIngestResponse(accepted = true)
 
-        val response = client.post("/internal/billing/usage/ingest") {
-            header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
-            contentType(ContentType.Application.Json)
-            setBody("""{"orgId":"org_1","eventKey":"signal.automation.run","quantity":1}""")
+            val response =
+                client.post("/internal/billing/usage/ingest") {
+                    header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"orgId":"org_1","eventKey":"signal.automation.run","quantity":1}""")
+                }
+
+            assertNotEquals(HttpStatusCode.Unauthorized, response.status)
         }
-
-        assertNotEquals(HttpStatusCode.Unauthorized, response.status)
-    }
 }

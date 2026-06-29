@@ -2,7 +2,7 @@ package com.apollodeploy.billing.feature.signal.domain
 
 import com.apollodeploy.billing.core.BillingCatalogProductKind
 
-/**
+/*
  * Apollo Billing — Signal SMS add-on catalog.
  *
  * SMS is a paid add-on subscription that stacks on top of the base Signal plan.
@@ -14,7 +14,7 @@ import com.apollodeploy.billing.core.BillingCatalogProductKind
  *   - Opt-in: customer enables overage via project settings → billed at per-plan rate
  */
 
-// ─── Polar Meter IDs ──────────────────────────────────────────────────────────
+// ─── Polar Meter IDs ─────────────────────────────────────────────────────────
 
 /** Polar meter for SMS segments sent. Event: signal.sms.segment_sent */
 const val SIGNAL_SMS_SEGMENT_METER_ID = "a57305e9-81b8-4624-aff0-5d8b957d434e"
@@ -75,20 +75,21 @@ fun SmsEntitlements.toFeatureMap(): Map<String, Boolean> =
     )
 
 /** No SMS add-on — all features disabled. */
-val SMS_NO_ADDON_ENTITLEMENTS = SmsEntitlements(
-    smsEnabled = false,
-    mmsEnabled = false,
-    smsNumberPooling = false,
-    smsShortCodes = false,
-    smsAbTesting = false,
-    smsSendTimeOptimization = false,
-    smsCarrierReporting = false,
-    smsCostAnalytics = false,
-    smsConversationThreads = false,
-    smsKeywordRouting = false,
-    smsAiAutoReply = false,
-    smsRcs = false,
-)
+val SMS_NO_ADDON_ENTITLEMENTS =
+    SmsEntitlements(
+        smsEnabled = false,
+        mmsEnabled = false,
+        smsNumberPooling = false,
+        smsShortCodes = false,
+        smsAbTesting = false,
+        smsSendTimeOptimization = false,
+        smsCarrierReporting = false,
+        smsCostAnalytics = false,
+        smsConversationThreads = false,
+        smsKeywordRouting = false,
+        smsAiAutoReply = false,
+        smsRcs = false,
+    )
 
 // ─── SMS Add-On Plans ─────────────────────────────────────────────────────────
 
@@ -104,210 +105,221 @@ data class SignalSmsPlan(
     val entitlements: SmsEntitlements,
 )
 
-val signalSmsPlans: List<SignalSmsPlan> = listOf(
-    SignalSmsPlan(
-        slug = "signal-sms-lite",
-        polarProductId = "6b39a434-5d32-480a-97c3-5563b3aa338c",
-        name = "SMS Lite",
-        priceUsdCents = 1000,
-        includedSegments = 500,
-        overageRateCentsPerSegment = 1.5, // $0.015
-        entitlements = SmsEntitlements(
-            smsEnabled = true,
-            mmsEnabled = false,
-            smsNumberPooling = false,
-            smsShortCodes = false,
-            smsAbTesting = false,
-            smsSendTimeOptimization = false,
-            smsCarrierReporting = false,
-            smsCostAnalytics = true,
-            smsConversationThreads = false,
-            smsKeywordRouting = false,
-            smsAiAutoReply = false,
-            smsRcs = false,
+val signalSmsPlans: List<SignalSmsPlan> =
+    listOf(
+        SignalSmsPlan(
+            slug = "signal-sms-lite",
+            polarProductId = "6b39a434-5d32-480a-97c3-5563b3aa338c",
+            name = "SMS Lite",
+            priceUsdCents = 1000,
+            includedSegments = 500,
+            overageRateCentsPerSegment = 1.5, // $0.015
+            entitlements =
+                SmsEntitlements(
+                    smsEnabled = true,
+                    mmsEnabled = false,
+                    smsNumberPooling = false,
+                    smsShortCodes = false,
+                    smsAbTesting = false,
+                    smsSendTimeOptimization = false,
+                    smsCarrierReporting = false,
+                    smsCostAnalytics = true,
+                    smsConversationThreads = false,
+                    smsKeywordRouting = false,
+                    smsAiAutoReply = false,
+                    smsRcs = false,
+                ),
         ),
-    ),
-    SignalSmsPlan(
-        slug = "signal-sms-starter",
-        polarProductId = "d7968bb0-8d29-4633-8a19-f5a32505c2a8",
-        name = "SMS Starter",
-        priceUsdCents = 2000,
-        includedSegments = 1_500,
-        overageRateCentsPerSegment = 1.4, // $0.014
-        entitlements = SmsEntitlements(
-            smsEnabled = true,
-            mmsEnabled = false,
-            smsNumberPooling = false,
-            smsShortCodes = false,
-            smsAbTesting = false,
-            smsSendTimeOptimization = false,
-            smsCarrierReporting = false,
-            smsCostAnalytics = true,
-            smsConversationThreads = true,
-            smsKeywordRouting = true,
-            smsAiAutoReply = false,
-            smsRcs = false,
+        SignalSmsPlan(
+            slug = "signal-sms-starter",
+            polarProductId = "d7968bb0-8d29-4633-8a19-f5a32505c2a8",
+            name = "SMS Starter",
+            priceUsdCents = 2000,
+            includedSegments = 1_500,
+            overageRateCentsPerSegment = 1.4, // $0.014
+            entitlements =
+                SmsEntitlements(
+                    smsEnabled = true,
+                    mmsEnabled = false,
+                    smsNumberPooling = false,
+                    smsShortCodes = false,
+                    smsAbTesting = false,
+                    smsSendTimeOptimization = false,
+                    smsCarrierReporting = false,
+                    smsCostAnalytics = true,
+                    smsConversationThreads = true,
+                    smsKeywordRouting = true,
+                    smsAiAutoReply = false,
+                    smsRcs = false,
+                ),
         ),
-    ),
-    SignalSmsPlan(
-        slug = "signal-sms-growth",
-        polarProductId = "7625c966-c478-432f-8251-6ed7c5028d2d",
-        name = "SMS Growth",
-        priceUsdCents = 4500,
-        includedSegments = 4_000,
-        overageRateCentsPerSegment = 1.3, // $0.013
-        entitlements = SmsEntitlements(
-            smsEnabled = true,
-            mmsEnabled = true,
-            smsNumberPooling = false,
-            smsShortCodes = false,
-            smsAbTesting = true,
-            smsSendTimeOptimization = true,
-            smsCarrierReporting = true,
-            smsCostAnalytics = true,
-            smsConversationThreads = true,
-            smsKeywordRouting = true,
-            smsAiAutoReply = false,
-            smsRcs = false,
+        SignalSmsPlan(
+            slug = "signal-sms-growth",
+            polarProductId = "7625c966-c478-432f-8251-6ed7c5028d2d",
+            name = "SMS Growth",
+            priceUsdCents = 4500,
+            includedSegments = 4_000,
+            overageRateCentsPerSegment = 1.3, // $0.013
+            entitlements =
+                SmsEntitlements(
+                    smsEnabled = true,
+                    mmsEnabled = true,
+                    smsNumberPooling = false,
+                    smsShortCodes = false,
+                    smsAbTesting = true,
+                    smsSendTimeOptimization = true,
+                    smsCarrierReporting = true,
+                    smsCostAnalytics = true,
+                    smsConversationThreads = true,
+                    smsKeywordRouting = true,
+                    smsAiAutoReply = false,
+                    smsRcs = false,
+                ),
         ),
-    ),
-    SignalSmsPlan(
-        slug = "signal-sms-business",
-        polarProductId = "17da7101-8c70-4c09-b6ea-a1275f66b90a",
-        name = "SMS Business",
-        priceUsdCents = 9500,
-        includedSegments = 9_000,
-        overageRateCentsPerSegment = 1.2, // $0.012
-        entitlements = SmsEntitlements(
-            smsEnabled = true,
-            mmsEnabled = true,
-            smsNumberPooling = true,
-            smsShortCodes = false,
-            smsAbTesting = true,
-            smsSendTimeOptimization = true,
-            smsCarrierReporting = true,
-            smsCostAnalytics = true,
-            smsConversationThreads = true,
-            smsKeywordRouting = true,
-            smsAiAutoReply = true,
-            smsRcs = true,
+        SignalSmsPlan(
+            slug = "signal-sms-business",
+            polarProductId = "17da7101-8c70-4c09-b6ea-a1275f66b90a",
+            name = "SMS Business",
+            priceUsdCents = 9500,
+            includedSegments = 9_000,
+            overageRateCentsPerSegment = 1.2, // $0.012
+            entitlements =
+                SmsEntitlements(
+                    smsEnabled = true,
+                    mmsEnabled = true,
+                    smsNumberPooling = true,
+                    smsShortCodes = false,
+                    smsAbTesting = true,
+                    smsSendTimeOptimization = true,
+                    smsCarrierReporting = true,
+                    smsCostAnalytics = true,
+                    smsConversationThreads = true,
+                    smsKeywordRouting = true,
+                    smsAiAutoReply = true,
+                    smsRcs = true,
+                ),
         ),
-    ),
-    SignalSmsPlan(
-        slug = "signal-sms-scale",
-        polarProductId = "ae426dc8-62ad-427f-8ff0-15d30c2cc7c4",
-        name = "SMS Scale",
-        priceUsdCents = 19500,
-        includedSegments = 18_000,
-        overageRateCentsPerSegment = 1.1, // $0.011
-        entitlements = SmsEntitlements(
-            smsEnabled = true,
-            mmsEnabled = true,
-            smsNumberPooling = true,
-            smsShortCodes = true,
-            smsAbTesting = true,
-            smsSendTimeOptimization = true,
-            smsCarrierReporting = true,
-            smsCostAnalytics = true,
-            smsConversationThreads = true,
-            smsKeywordRouting = true,
-            smsAiAutoReply = true,
-            smsRcs = true,
+        SignalSmsPlan(
+            slug = "signal-sms-scale",
+            polarProductId = "ae426dc8-62ad-427f-8ff0-15d30c2cc7c4",
+            name = "SMS Scale",
+            priceUsdCents = 19500,
+            includedSegments = 18_000,
+            overageRateCentsPerSegment = 1.1, // $0.011
+            entitlements =
+                SmsEntitlements(
+                    smsEnabled = true,
+                    mmsEnabled = true,
+                    smsNumberPooling = true,
+                    smsShortCodes = true,
+                    smsAbTesting = true,
+                    smsSendTimeOptimization = true,
+                    smsCarrierReporting = true,
+                    smsCostAnalytics = true,
+                    smsConversationThreads = true,
+                    smsKeywordRouting = true,
+                    smsAiAutoReply = true,
+                    smsRcs = true,
+                ),
         ),
-    ),
-    SignalSmsPlan(
-        slug = "signal-sms-enterprise",
-        polarProductId = "a37a6b09-3910-4c71-96ab-b1e9d33efd3b",
-        name = "SMS Enterprise",
-        priceUsdCents = 0, // Custom/negotiated
-        includedSegments = 0, // Contract-specific
-        overageRateCentsPerSegment = 1.0, // $0.010
-        entitlements = SmsEntitlements(
-            smsEnabled = true,
-            mmsEnabled = true,
-            smsNumberPooling = true,
-            smsShortCodes = true,
-            smsAbTesting = true,
-            smsSendTimeOptimization = true,
-            smsCarrierReporting = true,
-            smsCostAnalytics = true,
-            smsConversationThreads = true,
-            smsKeywordRouting = true,
-            smsAiAutoReply = true,
-            smsRcs = true,
+        SignalSmsPlan(
+            slug = "signal-sms-enterprise",
+            polarProductId = "a37a6b09-3910-4c71-96ab-b1e9d33efd3b",
+            name = "SMS Enterprise",
+            priceUsdCents = 0, // Custom/negotiated
+            includedSegments = 0, // Contract-specific
+            overageRateCentsPerSegment = 1.0, // $0.010
+            entitlements =
+                SmsEntitlements(
+                    smsEnabled = true,
+                    mmsEnabled = true,
+                    smsNumberPooling = true,
+                    smsShortCodes = true,
+                    smsAbTesting = true,
+                    smsSendTimeOptimization = true,
+                    smsCarrierReporting = true,
+                    smsCostAnalytics = true,
+                    smsConversationThreads = true,
+                    smsKeywordRouting = true,
+                    smsAiAutoReply = true,
+                    smsRcs = true,
+                ),
         ),
-    ),
-)
+    )
 
-fun signalFindSmsPlanByProductId(polarProductId: String): SignalSmsPlan? =
-    signalSmsPlans.find { it.polarProductId.isNotEmpty() && it.polarProductId == polarProductId }
+fun signalFindSmsPlanByProductId(polarProductId: String): SignalSmsPlan? = signalSmsPlans.find { it.polarProductId.isNotEmpty() && it.polarProductId == polarProductId }
 
-fun signalFindSmsPlanBySlug(slug: String): SignalSmsPlan? =
-    signalSmsPlans.find { it.slug == slug }
+fun signalFindSmsPlanBySlug(slug: String): SignalSmsPlan? = signalSmsPlans.find { it.slug == slug }
 
 // ─── MMS Add-On ───────────────────────────────────────────────────────────────
 
 /** MMS capability add-on — stacks on any SMS plan. Growth+ includes MMS free. */
-val signalMmsAddOn = SignalCatalogProduct(
-    slug = "signal-mms-addon",
-    polarProductId = "10048308-dd1c-408b-948f-5a823de1f8a5",
-    name = "MMS Enabled",
-    price = 8,
-    currency = "usd",
-    kind = BillingCatalogProductKind.SUBSCRIPTION_ADD_ON,
-)
+val signalMmsAddOn =
+    SignalCatalogProduct(
+        slug = "signal-mms-addon",
+        polarProductId = "10048308-dd1c-408b-948f-5a823de1f8a5",
+        name = "MMS Enabled",
+        price = 8,
+        currency = "usd",
+        kind = BillingCatalogProductKind.SUBSCRIPTION_ADD_ON,
+    )
 
 // ─── Premium SMS Add-Ons ──────────────────────────────────────────────────────
 
 /** Number Pooling add-on (recurring). */
-val signalSmsNumberPoolingAddOn = SignalCatalogProduct(
-    slug = "signal-sms-number-pooling",
-    polarProductId = "9e03f0d3-79fb-46e7-b197-a99cdead2e9c",
-    name = "Number Pooling",
-    price = 15,
-    currency = "usd",
-    kind = BillingCatalogProductKind.SUBSCRIPTION_ADD_ON,
-)
+val signalSmsNumberPoolingAddOn =
+    SignalCatalogProduct(
+        slug = "signal-sms-number-pooling",
+        polarProductId = "9e03f0d3-79fb-46e7-b197-a99cdead2e9c",
+        name = "Number Pooling",
+        price = 15,
+        currency = "usd",
+        kind = BillingCatalogProductKind.SUBSCRIPTION_ADD_ON,
+    )
 
 /** Short Code (Random) add-on (recurring). */
-val signalSmsShortCodeRandomAddOn = SignalCatalogProduct(
-    slug = "signal-sms-short-code-random",
-    polarProductId = "ae546687-8df4-470b-ad06-0e7c25befcc0",
-    name = "Short Code (Random)",
-    price = 1100,
-    currency = "usd",
-    kind = BillingCatalogProductKind.SUBSCRIPTION_ADD_ON,
-)
+val signalSmsShortCodeRandomAddOn =
+    SignalCatalogProduct(
+        slug = "signal-sms-short-code-random",
+        polarProductId = "ae546687-8df4-470b-ad06-0e7c25befcc0",
+        name = "Short Code (Random)",
+        price = 1100,
+        currency = "usd",
+        kind = BillingCatalogProductKind.SUBSCRIPTION_ADD_ON,
+    )
 
 /** Short Code (Vanity) add-on (recurring). */
-val signalSmsShortCodeVanityAddOn = SignalCatalogProduct(
-    slug = "signal-sms-short-code-vanity",
-    polarProductId = "a0799572-6e68-449a-98a4-94dbc329a12d",
-    name = "Short Code (Vanity)",
-    price = 1600,
-    currency = "usd",
-    kind = BillingCatalogProductKind.SUBSCRIPTION_ADD_ON,
-)
+val signalSmsShortCodeVanityAddOn =
+    SignalCatalogProduct(
+        slug = "signal-sms-short-code-vanity",
+        polarProductId = "a0799572-6e68-449a-98a4-94dbc329a12d",
+        name = "Short Code (Vanity)",
+        price = 1600,
+        currency = "usd",
+        kind = BillingCatalogProductKind.SUBSCRIPTION_ADD_ON,
+    )
 
 /** Short Code Setup fee (one-time). */
-val signalSmsShortCodeSetup = SignalCatalogProduct(
-    slug = "signal-sms-short-code-setup",
-    polarProductId = "172306c2-fdc7-4c26-b2f0-d50d8559bfba",
-    name = "Short Code Setup",
-    price = 650,
-    currency = "usd",
-    kind = BillingCatalogProductKind.ONE_TIME_PURCHASE,
-)
+val signalSmsShortCodeSetup =
+    SignalCatalogProduct(
+        slug = "signal-sms-short-code-setup",
+        polarProductId = "172306c2-fdc7-4c26-b2f0-d50d8559bfba",
+        name = "Short Code Setup",
+        price = 650,
+        currency = "usd",
+        kind = BillingCatalogProductKind.ONE_TIME_PURCHASE,
+    )
 
 /** Short Code MMS Setup fee (one-time). */
-val signalSmsShortCodeMmsSetup = SignalCatalogProduct(
-    slug = "signal-sms-short-code-mms-setup",
-    polarProductId = "124c85c9-0123-4a95-a40b-00c17f140fbc",
-    name = "Short Code MMS Setup",
-    price = 500,
-    currency = "usd",
-    kind = BillingCatalogProductKind.ONE_TIME_PURCHASE,
-)
+val signalSmsShortCodeMmsSetup =
+    SignalCatalogProduct(
+        slug = "signal-sms-short-code-mms-setup",
+        polarProductId = "124c85c9-0123-4a95-a40b-00c17f140fbc",
+        name = "Short Code MMS Setup",
+        price = 500,
+        currency = "usd",
+        kind = BillingCatalogProductKind.ONE_TIME_PURCHASE,
+    )
 
 // ─── SMS Segment Top-Up Packs ─────────────────────────────────────────────────
 
@@ -318,38 +330,37 @@ data class SmsSegmentPack(
     val polarProductId: String = "",
 )
 
-val signalSmsSegmentPacks: List<SmsSegmentPack> = listOf(
-    SmsSegmentPack(
-        slug = "signal-sms-segments-1k",
-        segments = 1_000,
-        priceUsdCents = 1300,
-        polarProductId = "bf0c5e22-5cf7-48b5-8bb8-32b04b5e5cae",
-    ),
-    SmsSegmentPack(
-        slug = "signal-sms-segments-5k",
-        segments = 5_000,
-        priceUsdCents = 6000,
-        polarProductId = "25f39a76-cd9a-4822-9b82-a2656562b470",
-    ),
-    SmsSegmentPack(
-        slug = "signal-sms-segments-25k",
-        segments = 25_000,
-        priceUsdCents = 27500,
-        polarProductId = "c6bab06a-b103-4a52-9219-ca2e6d500e44",
-    ),
-    SmsSegmentPack(
-        slug = "signal-sms-segments-100k",
-        segments = 100_000,
-        priceUsdCents = 100000,
-        polarProductId = "abbdd1db-57d2-4f89-af78-c2eb2af7c0e4",
-    ),
-)
+val signalSmsSegmentPacks: List<SmsSegmentPack> =
+    listOf(
+        SmsSegmentPack(
+            slug = "signal-sms-segments-1k",
+            segments = 1_000,
+            priceUsdCents = 1300,
+            polarProductId = "bf0c5e22-5cf7-48b5-8bb8-32b04b5e5cae",
+        ),
+        SmsSegmentPack(
+            slug = "signal-sms-segments-5k",
+            segments = 5_000,
+            priceUsdCents = 6000,
+            polarProductId = "25f39a76-cd9a-4822-9b82-a2656562b470",
+        ),
+        SmsSegmentPack(
+            slug = "signal-sms-segments-25k",
+            segments = 25_000,
+            priceUsdCents = 27500,
+            polarProductId = "c6bab06a-b103-4a52-9219-ca2e6d500e44",
+        ),
+        SmsSegmentPack(
+            slug = "signal-sms-segments-100k",
+            segments = 100_000,
+            priceUsdCents = 100000,
+            polarProductId = "abbdd1db-57d2-4f89-af78-c2eb2af7c0e4",
+        ),
+    )
 
-fun findSmsSegmentPackBySlug(slug: String): SmsSegmentPack? =
-    signalSmsSegmentPacks.find { it.slug == slug }
+fun findSmsSegmentPackBySlug(slug: String): SmsSegmentPack? = signalSmsSegmentPacks.find { it.slug == slug }
 
-fun findSmsSegmentPackByProductId(polarProductId: String): SmsSegmentPack? =
-    signalSmsSegmentPacks.find { it.polarProductId.isNotEmpty() && it.polarProductId == polarProductId }
+fun findSmsSegmentPackByProductId(polarProductId: String): SmsSegmentPack? = signalSmsSegmentPacks.find { it.polarProductId.isNotEmpty() && it.polarProductId == polarProductId }
 
 // ─── Aggregate catalog products for SMS ───────────────────────────────────────
 
@@ -367,12 +378,13 @@ val signalSmsSubscriptionAddOns: List<SignalCatalogProduct> =
     }
 
 /** All SMS recurring premium add-ons (MMS, number pooling, short codes). */
-val signalSmsPremiumRecurringAddOns: List<SignalCatalogProduct> = listOf(
-    signalMmsAddOn,
-    signalSmsNumberPoolingAddOn,
-    signalSmsShortCodeRandomAddOn,
-    signalSmsShortCodeVanityAddOn,
-)
+val signalSmsPremiumRecurringAddOns: List<SignalCatalogProduct> =
+    listOf(
+        signalMmsAddOn,
+        signalSmsNumberPoolingAddOn,
+        signalSmsShortCodeRandomAddOn,
+        signalSmsShortCodeVanityAddOn,
+    )
 
 /** All SMS one-time products (setup fees + segment packs). */
 val signalSmsOneTimeProducts: List<SignalCatalogProduct> =
@@ -398,20 +410,19 @@ val signalSmsCatalogProducts: List<SignalCatalogProduct> =
 private val SMS_INELIGIBLE_BASE_PLANS = setOf("signal-spark")
 
 /** Returns true if the base plan supports subscribing to an SMS add-on. */
-fun isSmsSupportedForBasePlan(basePlanSlug: String): Boolean =
-    basePlanSlug !in SMS_INELIGIBLE_BASE_PLANS
+fun isSmsSupportedForBasePlan(basePlanSlug: String): Boolean = basePlanSlug !in SMS_INELIGIBLE_BASE_PLANS
 
 /** The SMS plans that include MMS natively (Growth+). MMS add-on not needed. */
-private val SMS_PLANS_WITH_INCLUDED_MMS = setOf(
-    "signal-sms-growth",
-    "signal-sms-business",
-    "signal-sms-scale",
-    "signal-sms-enterprise",
-)
+private val SMS_PLANS_WITH_INCLUDED_MMS =
+    setOf(
+        "signal-sms-growth",
+        "signal-sms-business",
+        "signal-sms-scale",
+        "signal-sms-enterprise",
+    )
 
 /** Returns true if the SMS plan includes MMS without needing the separate MMS add-on. */
-fun isSmsPlanIncludesMms(smsPlanSlug: String): Boolean =
-    smsPlanSlug in SMS_PLANS_WITH_INCLUDED_MMS
+fun isSmsPlanIncludesMms(smsPlanSlug: String): Boolean = smsPlanSlug in SMS_PLANS_WITH_INCLUDED_MMS
 
 // ─── SMS Error Codes ──────────────────────────────────────────────────────────
 

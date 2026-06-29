@@ -24,11 +24,13 @@ fun billingTestApplication(
     testApplication {
         application {
             install(ContentNegotiation) {
-                json(Json {
-                    ignoreUnknownKeys = true
-                    encodeDefaults = true
-                    explicitNulls = false
-                })
+                json(
+                    Json {
+                        ignoreUnknownKeys = true
+                        encodeDefaults = true
+                        explicitNulls = false
+                    },
+                )
             }
             install(StatusPages) {
                 exception<OAuthServiceAuthException> { call, cause ->
@@ -63,15 +65,17 @@ fun billingTestApplication(
 fun Routing.noAuthInternalRoutes(build: Routing.() -> Unit) {
     route("") {
         // Minimal auth: require the test bearer token
-        install(io.ktor.server.application.createRouteScopedPlugin("TestAuth") {
-            onCall { call ->
-                val authHeader = call.request.header("Authorization") ?: ""
-                val token = authHeader.removePrefix("Bearer ").trim()
-                if (token != validServiceToken()) {
-                    throw OAuthServiceAuthException(message = "Missing or invalid service token")
+        install(
+            io.ktor.server.application.createRouteScopedPlugin("TestAuth") {
+                onCall { call ->
+                    val authHeader = call.request.header("Authorization") ?: ""
+                    val token = authHeader.removePrefix("Bearer ").trim()
+                    if (token != validServiceToken()) {
+                        throw OAuthServiceAuthException(message = "Missing or invalid service token")
+                    }
                 }
-            }
-        })
+            },
+        )
         build()
     }
 }

@@ -4,8 +4,8 @@ import com.apollodeploy.billing.feature.customer.application.CustomerBillingServ
 import com.apollodeploy.billing.feature.customer.domain.CustomerBillingResult
 import com.apollodeploy.billing.feature.customer.domain.ListCustomerPaymentMethodsResponse
 import com.apollodeploy.billing.feature.customer.domain.UpdateCustomerBillingInfoResponse
-import com.apollodeploy.billing.support.noAuthInternalRoutes
 import com.apollodeploy.billing.support.billingTestApplication
+import com.apollodeploy.billing.support.noAuthInternalRoutes
 import com.apollodeploy.billing.support.validServiceToken
 import io.kotest.property.Arb
 import io.kotest.property.arbitrary.element
@@ -34,7 +34,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 
 class CustomerBillingControllerTest {
-
     private val customerBillingService = mockk<CustomerBillingService>()
     private val controller = CustomerBillingController(customerBillingService)
 
@@ -45,222 +44,246 @@ class CustomerBillingControllerTest {
     // ─────────────────────────────────────────────────────────────────────────
 
     @Test
-    fun `PATCH billing-info without Authorization header returns HTTP 401`() = billingTestApplication(
-        routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
-    ) {
-        val response = client.patch("/internal/billing/customer/billing-info") {
-            contentType(ContentType.Application.Json)
-            setBody(patchRequestBody)
-        }
+    fun `PATCH billing-info without Authorization header returns HTTP 401`() =
+        billingTestApplication(
+            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+        ) {
+            val response =
+                client.patch("/internal/billing/customer/billing-info") {
+                    contentType(ContentType.Application.Json)
+                    setBody(patchRequestBody)
+                }
 
-        assertEquals(HttpStatusCode.Unauthorized, response.status)
-    }
+            assertEquals(HttpStatusCode.Unauthorized, response.status)
+        }
 
     @Test
-    fun `PATCH billing-info Success returns HTTP 200 with customer field`() = billingTestApplication(
-        routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
-    ) {
-        coEvery { customerBillingService.updateBillingInfo(any()) } returns
-            CustomerBillingResult.Success(UpdateCustomerBillingInfoResponse(buildJsonObject {}))
+    fun `PATCH billing-info Success returns HTTP 200 with customer field`() =
+        billingTestApplication(
+            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+        ) {
+            coEvery { customerBillingService.updateBillingInfo(any()) } returns
+                CustomerBillingResult.Success(UpdateCustomerBillingInfoResponse(buildJsonObject {}))
 
-        val response = client.patch("/internal/billing/customer/billing-info") {
-            header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
-            contentType(ContentType.Application.Json)
-            setBody(patchRequestBody)
+            val response =
+                client.patch("/internal/billing/customer/billing-info") {
+                    header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+                    contentType(ContentType.Application.Json)
+                    setBody(patchRequestBody)
+                }
+
+            assertEquals(HttpStatusCode.OK, response.status)
+            val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+            assertNotNull(body["customer"])
         }
-
-        assertEquals(HttpStatusCode.OK, response.status)
-        val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
-        assertNotNull(body["customer"])
-    }
 
     @Test
-    fun `PATCH billing-info InvalidRequest returns HTTP 400 with code and message`() = billingTestApplication(
-        routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
-    ) {
-        coEvery { customerBillingService.updateBillingInfo(any()) } returns
-            CustomerBillingResult.InvalidRequest("orgId is required")
+    fun `PATCH billing-info InvalidRequest returns HTTP 400 with code and message`() =
+        billingTestApplication(
+            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+        ) {
+            coEvery { customerBillingService.updateBillingInfo(any()) } returns
+                CustomerBillingResult.InvalidRequest("orgId is required")
 
-        val response = client.patch("/internal/billing/customer/billing-info") {
-            header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
-            contentType(ContentType.Application.Json)
-            setBody(patchRequestBody)
+            val response =
+                client.patch("/internal/billing/customer/billing-info") {
+                    header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+                    contentType(ContentType.Application.Json)
+                    setBody(patchRequestBody)
+                }
+
+            assertEquals(HttpStatusCode.BadRequest, response.status)
+            val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+            assertEquals("billing.invalid_request", body["code"]?.jsonPrimitive?.content)
+            assertNotNull(body["message"])
         }
-
-        assertEquals(HttpStatusCode.BadRequest, response.status)
-        val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
-        assertEquals("billing.invalid_request", body["code"]?.jsonPrimitive?.content)
-        assertNotNull(body["message"])
-    }
 
     @Test
-    fun `PATCH billing-info PolarFailure 404 returns HTTP 404 with all error fields`() = billingTestApplication(
-        routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
-    ) {
-        coEvery { customerBillingService.updateBillingInfo(any()) } returns
-            CustomerBillingResult.PolarFailure(
-                fallbackCode = "billing.customer_update_failed",
-                statusCode = 404,
-                errorBody = "not found",
-            )
+    fun `PATCH billing-info PolarFailure 404 returns HTTP 404 with all error fields`() =
+        billingTestApplication(
+            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+        ) {
+            coEvery { customerBillingService.updateBillingInfo(any()) } returns
+                CustomerBillingResult.PolarFailure(
+                    fallbackCode = "billing.customer_update_failed",
+                    statusCode = 404,
+                    errorBody = "not found",
+                )
 
-        val response = client.patch("/internal/billing/customer/billing-info") {
-            header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
-            contentType(ContentType.Application.Json)
-            setBody(patchRequestBody)
+            val response =
+                client.patch("/internal/billing/customer/billing-info") {
+                    header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+                    contentType(ContentType.Application.Json)
+                    setBody(patchRequestBody)
+                }
+
+            assertEquals(HttpStatusCode.NotFound, response.status)
+            val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+            assertNotNull(body["code"])
+            assertNotNull(body["message"])
+            assertNotNull(body["status"]) // Replaced polarStatus+polarError with sanitized 'status' field
         }
-
-        assertEquals(HttpStatusCode.NotFound, response.status)
-        val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
-        assertNotNull(body["code"])
-        assertNotNull(body["message"])
-        assertNotNull(body["status"]) // Replaced polarStatus+polarError with sanitized 'status' field
-    }
 
     @Test
-    fun `PATCH billing-info PolarFailure 422 returns HTTP 422`() = billingTestApplication(
-        routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
-    ) {
-        coEvery { customerBillingService.updateBillingInfo(any()) } returns
-            CustomerBillingResult.PolarFailure(
-                fallbackCode = "billing.customer_update_failed",
-                statusCode = 422,
-                errorBody = "unprocessable entity",
-            )
+    fun `PATCH billing-info PolarFailure 422 returns HTTP 422`() =
+        billingTestApplication(
+            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+        ) {
+            coEvery { customerBillingService.updateBillingInfo(any()) } returns
+                CustomerBillingResult.PolarFailure(
+                    fallbackCode = "billing.customer_update_failed",
+                    statusCode = 422,
+                    errorBody = "unprocessable entity",
+                )
 
-        val response = client.patch("/internal/billing/customer/billing-info") {
-            header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
-            contentType(ContentType.Application.Json)
-            setBody(patchRequestBody)
+            val response =
+                client.patch("/internal/billing/customer/billing-info") {
+                    header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+                    contentType(ContentType.Application.Json)
+                    setBody(patchRequestBody)
+                }
+
+            assertEquals(HttpStatusCode.UnprocessableEntity, response.status)
         }
-
-        assertEquals(HttpStatusCode.UnprocessableEntity, response.status)
-    }
 
     @Test
-    fun `PATCH billing-info PolarFailure 500 returns HTTP 502 BadGateway`() = billingTestApplication(
-        routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
-    ) {
-        coEvery { customerBillingService.updateBillingInfo(any()) } returns
-            CustomerBillingResult.PolarFailure(
-                fallbackCode = "billing.customer_update_failed",
-                statusCode = 500,
-                errorBody = "internal server error",
-            )
+    fun `PATCH billing-info PolarFailure 500 returns HTTP 502 BadGateway`() =
+        billingTestApplication(
+            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+        ) {
+            coEvery { customerBillingService.updateBillingInfo(any()) } returns
+                CustomerBillingResult.PolarFailure(
+                    fallbackCode = "billing.customer_update_failed",
+                    statusCode = 500,
+                    errorBody = "internal server error",
+                )
 
-        val response = client.patch("/internal/billing/customer/billing-info") {
-            header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
-            contentType(ContentType.Application.Json)
-            setBody(patchRequestBody)
+            val response =
+                client.patch("/internal/billing/customer/billing-info") {
+                    header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+                    contentType(ContentType.Application.Json)
+                    setBody(patchRequestBody)
+                }
+
+            assertEquals(HttpStatusCode.BadGateway, response.status)
         }
-
-        assertEquals(HttpStatusCode.BadGateway, response.status)
-    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // GET /internal/billing/customer/payment-methods
     // ─────────────────────────────────────────────────────────────────────────
 
     @Test
-    fun `GET payment-methods without Authorization header returns HTTP 401`() = billingTestApplication(
-        routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
-    ) {
-        val response = client.get("/internal/billing/customer/payment-methods?orgId=org_1")
+    fun `GET payment-methods without Authorization header returns HTTP 401`() =
+        billingTestApplication(
+            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+        ) {
+            val response = client.get("/internal/billing/customer/payment-methods?orgId=org_1")
 
-        assertEquals(HttpStatusCode.Unauthorized, response.status)
-    }
-
-    @Test
-    fun `GET payment-methods Success returns HTTP 200 with paymentMethods field`() = billingTestApplication(
-        routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
-    ) {
-        coEvery { customerBillingService.listPaymentMethods(any(), any(), any()) } returns
-            CustomerBillingResult.Success(ListCustomerPaymentMethodsResponse(buildJsonObject {}))
-
-        val response = client.get("/internal/billing/customer/payment-methods?orgId=org_1") {
-            header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+            assertEquals(HttpStatusCode.Unauthorized, response.status)
         }
 
-        assertEquals(HttpStatusCode.OK, response.status)
-        val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
-        assertNotNull(body["paymentMethods"])
-    }
-
     @Test
-    fun `GET payment-methods InvalidRequest returns HTTP 400`() = billingTestApplication(
-        routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
-    ) {
-        coEvery { customerBillingService.listPaymentMethods(any(), any(), any()) } returns
-            CustomerBillingResult.InvalidRequest("orgId required")
+    fun `GET payment-methods Success returns HTTP 200 with paymentMethods field`() =
+        billingTestApplication(
+            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+        ) {
+            coEvery { customerBillingService.listPaymentMethods(any(), any(), any()) } returns
+                CustomerBillingResult.Success(ListCustomerPaymentMethodsResponse(buildJsonObject {}))
 
-        val response = client.get("/internal/billing/customer/payment-methods") {
-            header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+            val response =
+                client.get("/internal/billing/customer/payment-methods?orgId=org_1") {
+                    header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+                }
+
+            assertEquals(HttpStatusCode.OK, response.status)
+            val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+            assertNotNull(body["paymentMethods"])
         }
 
-        assertEquals(HttpStatusCode.BadRequest, response.status)
-    }
+    @Test
+    fun `GET payment-methods InvalidRequest returns HTTP 400`() =
+        billingTestApplication(
+            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+        ) {
+            coEvery { customerBillingService.listPaymentMethods(any(), any(), any()) } returns
+                CustomerBillingResult.InvalidRequest("orgId required")
+
+            val response =
+                client.get("/internal/billing/customer/payment-methods") {
+                    header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+                }
+
+            assertEquals(HttpStatusCode.BadRequest, response.status)
+        }
 
     // ─────────────────────────────────────────────────────────────────────────
     // DELETE /internal/billing/customer/payment-methods/{paymentMethodId}
     // ─────────────────────────────────────────────────────────────────────────
 
     @Test
-    fun `DELETE payment-method without Authorization header returns HTTP 401`() = billingTestApplication(
-        routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
-    ) {
-        val response = client.delete("/internal/billing/customer/payment-methods/pm_abc?orgId=org_1")
+    fun `DELETE payment-method without Authorization header returns HTTP 401`() =
+        billingTestApplication(
+            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+        ) {
+            val response = client.delete("/internal/billing/customer/payment-methods/pm_abc?orgId=org_1")
 
-        assertEquals(HttpStatusCode.Unauthorized, response.status)
-    }
-
-    @Test
-    fun `DELETE payment-method Success returns HTTP 204 with empty body`() = billingTestApplication(
-        routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
-    ) {
-        coEvery { customerBillingService.deletePaymentMethod(any(), any()) } returns
-            CustomerBillingResult.Success(Unit)
-
-        val response = client.delete("/internal/billing/customer/payment-methods/pm_abc?orgId=org_1") {
-            header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+            assertEquals(HttpStatusCode.Unauthorized, response.status)
         }
 
-        assertEquals(HttpStatusCode.NoContent, response.status)
-        assertEquals("", response.bodyAsText())
-    }
-
     @Test
-    fun `DELETE payment-method InvalidRequest returns HTTP 400 with billing_invalid_request code`() = billingTestApplication(
-        routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
-    ) {
-        coEvery { customerBillingService.deletePaymentMethod(any(), any()) } returns
-            CustomerBillingResult.InvalidRequest("orgId required")
+    fun `DELETE payment-method Success returns HTTP 204 with empty body`() =
+        billingTestApplication(
+            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+        ) {
+            coEvery { customerBillingService.deletePaymentMethod(any(), any()) } returns
+                CustomerBillingResult.Success(Unit)
 
-        val response = client.delete("/internal/billing/customer/payment-methods/pm_abc") {
-            header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+            val response =
+                client.delete("/internal/billing/customer/payment-methods/pm_abc?orgId=org_1") {
+                    header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+                }
+
+            assertEquals(HttpStatusCode.NoContent, response.status)
+            assertEquals("", response.bodyAsText())
         }
 
-        assertEquals(HttpStatusCode.BadRequest, response.status)
-        val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
-        assertEquals("billing.invalid_request", body["code"]?.jsonPrimitive?.content)
-    }
-
     @Test
-    fun `DELETE payment-method PolarFailure 404 returns HTTP 404`() = billingTestApplication(
-        routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
-    ) {
-        coEvery { customerBillingService.deletePaymentMethod(any(), any()) } returns
-            CustomerBillingResult.PolarFailure(
-                fallbackCode = "billing.payment_method_delete_failed",
-                statusCode = 404,
-                errorBody = "not found",
-            )
+    fun `DELETE payment-method InvalidRequest returns HTTP 400 with billing_invalid_request code`() =
+        billingTestApplication(
+            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+        ) {
+            coEvery { customerBillingService.deletePaymentMethod(any(), any()) } returns
+                CustomerBillingResult.InvalidRequest("orgId required")
 
-        val response = client.delete("/internal/billing/customer/payment-methods/pm_abc?orgId=org_1") {
-            header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+            val response =
+                client.delete("/internal/billing/customer/payment-methods/pm_abc") {
+                    header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+                }
+
+            assertEquals(HttpStatusCode.BadRequest, response.status)
+            val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+            assertEquals("billing.invalid_request", body["code"]?.jsonPrimitive?.content)
         }
 
-        assertEquals(HttpStatusCode.NotFound, response.status)
-    }
+    @Test
+    fun `DELETE payment-method PolarFailure 404 returns HTTP 404`() =
+        billingTestApplication(
+            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+        ) {
+            coEvery { customerBillingService.deletePaymentMethod(any(), any()) } returns
+                CustomerBillingResult.PolarFailure(
+                    fallbackCode = "billing.payment_method_delete_failed",
+                    statusCode = 404,
+                    errorBody = "not found",
+                )
+
+            val response =
+                client.delete("/internal/billing/customer/payment-methods/pm_abc?orgId=org_1") {
+                    header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+                }
+
+            assertEquals(HttpStatusCode.NotFound, response.status)
+        }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Property 7: Customer InvalidRequest message passthrough
@@ -274,34 +297,36 @@ class CustomerBillingControllerTest {
     // ─────────────────────────────────────────────────────────────────────────
 
     @Test
-    fun `Property 7 - InvalidRequest message is passed through in response body`() = runBlocking {
-        val nonBlankMessage = Arb.string(minSize = 1, maxSize = 50).filter { it.isNotBlank() }
+    fun `Property 7 - InvalidRequest message is passed through in response body`() =
+        runBlocking {
+            val nonBlankMessage = Arb.string(minSize = 1, maxSize = 50).filter { it.isNotBlank() }
 
-        forAll(nonBlankMessage) { message ->
-            var passed = false
-            billingTestApplication(
-                routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
-            ) {
-                coEvery { customerBillingService.updateBillingInfo(any()) } returns
-                    CustomerBillingResult.InvalidRequest(message)
+            forAll(nonBlankMessage) { message ->
+                var passed = false
+                billingTestApplication(
+                    routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+                ) {
+                    coEvery { customerBillingService.updateBillingInfo(any()) } returns
+                        CustomerBillingResult.InvalidRequest(message)
 
-                val response = client.patch("/internal/billing/customer/billing-info") {
-                    header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
-                    contentType(ContentType.Application.Json)
-                    setBody(patchRequestBody)
+                    val response =
+                        client.patch("/internal/billing/customer/billing-info") {
+                            header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+                            contentType(ContentType.Application.Json)
+                            setBody(patchRequestBody)
+                        }
+
+                    if (response.status == HttpStatusCode.BadRequest) {
+                        val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+                        val codeMatch = body["code"]?.jsonPrimitive?.content == "billing.invalid_request"
+                        val messageMatch = body["message"]?.jsonPrimitive?.content == message
+                        passed = codeMatch && messageMatch
+                    }
                 }
-
-                if (response.status == HttpStatusCode.BadRequest) {
-                    val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
-                    val codeMatch = body["code"]?.jsonPrimitive?.content == "billing.invalid_request"
-                    val messageMatch = body["message"]?.jsonPrimitive?.content == message
-                    passed = codeMatch && messageMatch
-                }
+                passed
             }
-            passed
+            Unit
         }
-        Unit
-    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Property 8: PolarFailure status code mapping
@@ -314,41 +339,44 @@ class CustomerBillingControllerTest {
     // ─────────────────────────────────────────────────────────────────────────
 
     @Test
-    fun `Property 8 - PolarFailure statusCode maps to correct HTTP status`() = runBlocking {
-        forAll(Arb.element(400, 404, 422, 500, 503)) { polarStatus ->
-            var passed = false
-            billingTestApplication(
-                routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
-            ) {
-                coEvery { customerBillingService.updateBillingInfo(any()) } returns
-                    CustomerBillingResult.PolarFailure(
-                        fallbackCode = "billing.customer_update_failed",
-                        statusCode = polarStatus,
-                        errorBody = "polar error",
-                    )
+    fun `Property 8 - PolarFailure statusCode maps to correct HTTP status`() =
+        runBlocking {
+            forAll(Arb.element(400, 404, 422, 500, 503)) { polarStatus ->
+                var passed = false
+                billingTestApplication(
+                    routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+                ) {
+                    coEvery { customerBillingService.updateBillingInfo(any()) } returns
+                        CustomerBillingResult.PolarFailure(
+                            fallbackCode = "billing.customer_update_failed",
+                            statusCode = polarStatus,
+                            errorBody = "polar error",
+                        )
 
-                val response = client.patch("/internal/billing/customer/billing-info") {
-                    header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
-                    contentType(ContentType.Application.Json)
-                    setBody(patchRequestBody)
-                }
+                    val response =
+                        client.patch("/internal/billing/customer/billing-info") {
+                            header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
+                            contentType(ContentType.Application.Json)
+                            setBody(patchRequestBody)
+                        }
 
-                val expectedStatus = when (polarStatus) {
-                    400 -> HttpStatusCode.BadRequest
-                    404 -> HttpStatusCode.NotFound
-                    422 -> HttpStatusCode.UnprocessableEntity
-                    else -> HttpStatusCode.BadGateway
-                }
+                    val expectedStatus =
+                        when (polarStatus) {
+                            400 -> HttpStatusCode.BadRequest
+                            404 -> HttpStatusCode.NotFound
+                            422 -> HttpStatusCode.UnprocessableEntity
+                            else -> HttpStatusCode.BadGateway
+                        }
 
-                if (response.status == expectedStatus) {
-                    val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
-                    passed = body["code"] != null &&
-                        body["message"] != null &&
-                        body["status"] != null // sanitized: polarStatus+polarError removed for security
+                    if (response.status == expectedStatus) {
+                        val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+                        passed = body["code"] != null &&
+                            body["message"] != null &&
+                            body["status"] != null // sanitized: polarStatus+polarError removed for security
+                    }
                 }
+                passed
             }
-            passed
+            Unit
         }
-        Unit
-    }
 }

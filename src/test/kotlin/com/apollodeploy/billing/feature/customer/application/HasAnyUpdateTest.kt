@@ -15,7 +15,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class HasAnyUpdateTest {
-
     // ─── 14.1 ─────────────────────────────────────────────────────────────────
     // All five optional fields null → hasAnyUpdate() returns false
 
@@ -78,44 +77,54 @@ class HasAnyUpdateTest {
     // **Validates: Requirements 21.1, 7.3**
 
     @Test
-    fun `14_7 property - any non-empty subset of optional fields returns true (Property 7)`() = runBlocking {
-        val nonNullString = Arb.string(minSize = 1, maxSize = 50)
+    fun `14_7 property - any non-empty subset of optional fields returns true (Property 7)`() =
+        runBlocking {
+            val nonNullString = Arb.string(minSize = 1, maxSize = 50)
 
-        // Four string-typed optional fields as nullable arbs
-        val emailArb = nonNullString.orNull(nullProbability = 0.5)
-        val billingNameArb = nonNullString.orNull(nullProbability = 0.5)
-        val taxIdArb = nonNullString.orNull(nullProbability = 0.5)
-        val pmIdArb = nonNullString.orNull(nullProbability = 0.5)
+            // Four string-typed optional fields as nullable arbs
+            val emailArb = nonNullString.orNull(nullProbability = 0.5)
+            val billingNameArb = nonNullString.orNull(nullProbability = 0.5)
+            val taxIdArb = nonNullString.orNull(nullProbability = 0.5)
+            val pmIdArb = nonNullString.orNull(nullProbability = 0.5)
 
-        // Generate tuples (email, billingName, taxId, pmId) where at least one is non-null
-        // billingAddress is always null to simplify generation — the other 4 axes fully cover
-        // the "at least one non-null" requirement as stated in the task spec
-        val arbTuple = Arb
-            .bind(emailArb, billingNameArb, taxIdArb, pmIdArb) { e, b, t, p ->
-                Quadruple(e, b, t, p)
+            // Generate tuples (email, billingName, taxId, pmId) where at least one is non-null
+            // billingAddress is always null to simplify generation — the other 4 axes fully cover
+            // the "at least one non-null" requirement as stated in the task spec
+            val arbTuple =
+                Arb
+                    .bind(emailArb, billingNameArb, taxIdArb, pmIdArb) { e, b, t, p ->
+                        Quadruple(e, b, t, p)
+                    }.filter { (e, b, t, p) -> e != null || b != null || t != null || p != null }
+
+            forAll(arbTuple) { (email, billingName, taxId, pmId) ->
+                val request =
+                    UpdateCustomerBillingInfoRequest(
+                        orgId = "o",
+                        email = email,
+                        billingName = billingName,
+                        taxId = taxId,
+                        defaultPaymentMethodId = pmId,
+                    )
+                request.hasAnyUpdate()
             }
-            .filter { (e, b, t, p) -> e != null || b != null || t != null || p != null }
 
-        forAll(arbTuple) { (email, billingName, taxId, pmId) ->
-            val request = UpdateCustomerBillingInfoRequest(
-                orgId = "o",
-                email = email,
-                billingName = billingName,
-                taxId = taxId,
-                defaultPaymentMethodId = pmId,
-            )
-            request.hasAnyUpdate()
+            Unit
         }
-
-        Unit
-    }
 }
 
 /** Simple data holder for four nullable values used in the property test generator. */
-private data class Quadruple<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
+private data class Quadruple<A, B, C, D>(
+    val first: A,
+    val second: B,
+    val third: C,
+    val fourth: D,
+)
 
 /** Destructuring operator for Quadruple. */
 private operator fun <A, B, C, D> Quadruple<A, B, C, D>.component1() = first
+
 private operator fun <A, B, C, D> Quadruple<A, B, C, D>.component2() = second
+
 private operator fun <A, B, C, D> Quadruple<A, B, C, D>.component3() = third
+
 private operator fun <A, B, C, D> Quadruple<A, B, C, D>.component4() = fourth

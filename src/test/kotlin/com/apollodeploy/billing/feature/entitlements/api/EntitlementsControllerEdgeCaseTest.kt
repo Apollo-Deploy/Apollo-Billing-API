@@ -1,8 +1,8 @@
 package com.apollodeploy.billing.feature.entitlements.api
 
 import com.apollodeploy.billing.feature.entitlements.application.EntitlementsService
-import com.apollodeploy.billing.support.noAuthInternalRoutes
 import com.apollodeploy.billing.support.billingTestApplication
+import com.apollodeploy.billing.support.noAuthInternalRoutes
 import io.ktor.client.request.get
 import io.ktor.http.HttpStatusCode
 import io.mockk.mockk
@@ -11,7 +11,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 
 class EntitlementsControllerEdgeCaseTest {
-
     private val entitlementsService = mockk<EntitlementsService>()
     private val controller = EntitlementsController(entitlementsService)
 
@@ -23,13 +22,14 @@ class EntitlementsControllerEdgeCaseTest {
      * and should return a non-200 response (typically 404).
      */
     @Test
-    fun `GET entitlements without orgId path segment returns non-200`() = billingTestApplication(
-        routes = { noAuthInternalRoutes { entitlementsRoutes(controller) } },
-    ) {
-        val response = client.get("/internal/billing/entitlements/signal")
+    fun `GET entitlements without orgId path segment returns non-200`() =
+        billingTestApplication(
+            routes = { noAuthInternalRoutes { entitlementsRoutes(controller) } },
+        ) {
+            val response = client.get("/internal/billing/entitlements/signal")
 
-        assertNotEquals(HttpStatusCode.OK, response.status)
-    }
+            assertNotEquals(HttpStatusCode.OK, response.status)
+        }
 
     /**
      * Task 10.2: GET entitlements without appSlug and orgId path segments returns non-200.
@@ -39,13 +39,14 @@ class EntitlementsControllerEdgeCaseTest {
      * registered route and should return a non-200 response (typically 404).
      */
     @Test
-    fun `GET entitlements without appSlug and orgId path segments returns non-200`() = billingTestApplication(
-        routes = { noAuthInternalRoutes { entitlementsRoutes(controller) } },
-    ) {
-        val response = client.get("/internal/billing/entitlements")
+    fun `GET entitlements without appSlug and orgId path segments returns non-200`() =
+        billingTestApplication(
+            routes = { noAuthInternalRoutes { entitlementsRoutes(controller) } },
+        ) {
+            val response = client.get("/internal/billing/entitlements")
 
-        assertNotEquals(HttpStatusCode.OK, response.status)
-    }
+            assertNotEquals(HttpStatusCode.OK, response.status)
+        }
 
     /**
      * Task 10.3: GET entitlements with valid path and no Authorization header returns HTTP 401.
@@ -54,11 +55,12 @@ class EntitlementsControllerEdgeCaseTest {
      * rejected by the internal route auth middleware with 401 Unauthorized.
      */
     @Test
-    fun `GET entitlements with valid path and no Authorization header returns HTTP 401`() = billingTestApplication(
-        routes = { noAuthInternalRoutes { entitlementsRoutes(controller) } },
-    ) {
-        val response = client.get("/internal/billing/entitlements/signal/org_1")
+    fun `GET entitlements with valid path and no Authorization header returns HTTP 401`() =
+        billingTestApplication(
+            routes = { noAuthInternalRoutes { entitlementsRoutes(controller) } },
+        ) {
+            val response = client.get("/internal/billing/entitlements/signal/org_1")
 
-        assertEquals(HttpStatusCode.Unauthorized, response.status)
-    }
+            assertEquals(HttpStatusCode.Unauthorized, response.status)
+        }
 }

@@ -3,13 +3,13 @@ package com.apollodeploy.billing.feature.webhook.application
 import com.apollodeploy.billing.feature.webhook.domain.PolarWebhookResult
 import com.apollodeploy.billing.feature.webhook.infrastructure.persistence.PolarWebhookRepo
 import com.apollodeploy.billing.infrastructure.polar.PolarWebhookVerifier
+import io.mockk.Runs
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
 import io.mockk.mockkObject
-import io.mockk.Runs
 import io.mockk.unmockkObject
 import kotlinx.coroutines.runBlocking
 import kotlin.test.AfterTest
@@ -18,7 +18,6 @@ import kotlin.test.Test
 import kotlin.test.assertIs
 
 class PolarWebhookServiceTest {
-
     private val repo = mockk<PolarWebhookRepo>()
     private val service = PolarWebhookService(repo)
 
@@ -38,24 +37,26 @@ class PolarWebhookServiceTest {
     }
 
     @Test
-    fun `invalid signature returns InvalidSignature without calling repo`() = runBlocking {
-        every { PolarWebhookVerifier.verify(any(), any(), any(), any(), any()) } returns false
+    fun `invalid signature returns InvalidSignature without calling repo`() =
+        runBlocking {
+            every { PolarWebhookVerifier.verify(any(), any(), any(), any(), any()) } returns false
 
-        val result = service.receive(rawBody = validJson, webhookId = id, webhookTimestamp = ts, signature = sig)
+            val result = service.receive(rawBody = validJson, webhookId = id, webhookTimestamp = ts, signature = sig)
 
-        assertIs<PolarWebhookResult.InvalidSignature>(result)
-        coVerify(exactly = 0) { repo.handle(any()) }
-    }
+            assertIs<PolarWebhookResult.InvalidSignature>(result)
+            coVerify(exactly = 0) { repo.handle(any()) }
+        }
 
     @Test
-    fun `valid signature but malformed JSON returns InvalidPayload without calling repo`() = runBlocking {
-        every { PolarWebhookVerifier.verify(any(), any(), any(), any(), any()) } returns true
+    fun `valid signature but malformed JSON returns InvalidPayload without calling repo`() =
+        runBlocking {
+            every { PolarWebhookVerifier.verify(any(), any(), any(), any(), any()) } returns true
 
-        val result = service.receive(rawBody = "not-json".toByteArray(), webhookId = id, webhookTimestamp = ts, signature = sig)
+            val result = service.receive(rawBody = "not-json".toByteArray(), webhookId = id, webhookTimestamp = ts, signature = sig)
 
-        assertIs<PolarWebhookResult.InvalidPayload>(result)
-        coVerify(exactly = 0) { repo.handle(any()) }
-    }
+            assertIs<PolarWebhookResult.InvalidPayload>(result)
+            coVerify(exactly = 0) { repo.handle(any()) }
+        }
 
     @Test
     fun `valid signature, valid JSON, repo throws, returns HandlerError`() {
