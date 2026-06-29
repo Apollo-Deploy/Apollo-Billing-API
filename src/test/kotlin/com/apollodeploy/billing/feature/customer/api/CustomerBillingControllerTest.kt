@@ -114,8 +114,7 @@ class CustomerBillingControllerTest {
         val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
         assertNotNull(body["code"])
         assertNotNull(body["message"])
-        assertNotNull(body["polarStatus"])
-        assertNotNull(body["polarError"])
+        assertNotNull(body["status"]) // Replaced polarStatus+polarError with sanitized 'status' field
     }
 
     @Test
@@ -345,8 +344,7 @@ class CustomerBillingControllerTest {
                     val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
                     passed = body["code"] != null &&
                         body["message"] != null &&
-                        body["polarStatus"] != null &&
-                        body["polarError"] != null
+                        body["status"] != null // sanitized: polarStatus+polarError removed for security
                 }
             }
             passed

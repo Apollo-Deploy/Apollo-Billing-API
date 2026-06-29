@@ -45,7 +45,7 @@ class EnforceControllerEdgeCaseTest {
             routes = { noAuthInternalRoutes { enforceRoutes(controller) } },
         ) {
             val capturedRequest = slot<EnforceRequest>()
-            coEvery { enforceService.enforce(capture(capturedRequest)) } returns EnforceResult.Allowed
+            coEvery { enforceService.enforce(capture(capturedRequest), any()) } returns EnforceResult.Allowed
 
             val response = client.post("/internal/billing/enforce") {
                 header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
@@ -66,7 +66,7 @@ class EnforceControllerEdgeCaseTest {
             routes = { noAuthInternalRoutes { enforceRoutes(controller) } },
         ) {
             val capturedRequest = slot<EnforceRequest>()
-            coEvery { enforceService.enforce(capture(capturedRequest)) } returns EnforceResult.Allowed
+            coEvery { enforceService.enforce(capture(capturedRequest), any()) } returns EnforceResult.Allowed
 
             val response = client.post("/internal/billing/enforce") {
                 header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
@@ -87,7 +87,7 @@ class EnforceControllerEdgeCaseTest {
             routes = { noAuthInternalRoutes { enforceRoutes(controller) } },
         ) {
             val capturedRequest = slot<EnforceRequest>()
-            coEvery { enforceService.enforce(capture(capturedRequest)) } returns EnforceResult.Allowed
+            coEvery { enforceService.enforce(capture(capturedRequest), any()) } returns EnforceResult.Allowed
 
             val response = client.post("/internal/billing/enforce") {
                 header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
@@ -111,7 +111,7 @@ class EnforceControllerEdgeCaseTest {
     fun `9_8 - Rejected 402 response body contains resource, current, limit fields`() = billingTestApplication(
         routes = { noAuthInternalRoutes { enforceRoutes(controller) } },
     ) {
-        coEvery { enforceService.enforce(any()) } returns EnforceResult.Rejected(
+        coEvery { enforceService.enforce(any(), any()) } returns EnforceResult.Rejected(
             statusCode = 402,
             error = BillingErrorResponse(
                 code = "billing.quota_exceeded",
@@ -139,7 +139,7 @@ class EnforceControllerEdgeCaseTest {
     fun `9_9 - Rejected 402 response body contains feature and currentPlan fields`() = billingTestApplication(
         routes = { noAuthInternalRoutes { enforceRoutes(controller) } },
     ) {
-        coEvery { enforceService.enforce(any()) } returns EnforceResult.Rejected(
+        coEvery { enforceService.enforce(any(), any()) } returns EnforceResult.Rejected(
             statusCode = 402,
             error = BillingErrorResponse(
                 code = "billing.feature_not_available",
@@ -195,7 +195,7 @@ class EnforceControllerEdgeCaseTest {
         billingTestApplication(
             routes = { noAuthInternalRoutes { enforceRoutes(controller) } },
         ) {
-            coEvery { enforceService.enforce(any()) } returns EnforceResult.Allowed
+            coEvery { enforceService.enforce(any(), any()) } returns EnforceResult.Allowed
 
             val longOrgId = "o".repeat(1000)
             val body =

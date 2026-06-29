@@ -36,7 +36,7 @@ class EnforceControllerTest {
     private val requestBody = """{"orgId":"org_1","appSlug":"signal","check":{"type":"feature","feature":"deployments"}}"""
 
     @Test
-    fun `POST enforce without Authorization header returns HTTP 401 with code field`() = billingTestApplication(
+    fun `POST enforce without Authorization header returns HTTP 401`() = billingTestApplication(
         routes = { noAuthInternalRoutes { enforceRoutes(controller) } },
     ) {
         val response = client.post("/internal/billing/enforce") {
@@ -66,7 +66,7 @@ class EnforceControllerTest {
     fun `POST enforce Allowed branch returns HTTP 200 with allowed true`() = billingTestApplication(
         routes = { noAuthInternalRoutes { enforceRoutes(controller) } },
     ) {
-        coEvery { enforceService.enforce(any()) } returns EnforceResult.Allowed
+        coEvery { enforceService.enforce(any(), any()) } returns EnforceResult.Allowed
 
         val response = client.post("/internal/billing/enforce") {
             header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
@@ -83,7 +83,7 @@ class EnforceControllerTest {
     fun `POST enforce Rejected 402 returns HTTP 402 with code and message fields`() = billingTestApplication(
         routes = { noAuthInternalRoutes { enforceRoutes(controller) } },
     ) {
-        coEvery { enforceService.enforce(any()) } returns EnforceResult.Rejected(
+        coEvery { enforceService.enforce(any(), any()) } returns EnforceResult.Rejected(
             statusCode = 402,
             error = BillingErrorResponse("billing.quota_exceeded", "Quota exceeded"),
         )
@@ -104,7 +104,7 @@ class EnforceControllerTest {
     fun `POST enforce Rejected 404 returns HTTP 404`() = billingTestApplication(
         routes = { noAuthInternalRoutes { enforceRoutes(controller) } },
     ) {
-        coEvery { enforceService.enforce(any()) } returns EnforceResult.Rejected(
+        coEvery { enforceService.enforce(any(), any()) } returns EnforceResult.Rejected(
             statusCode = 404,
             error = BillingErrorResponse("billing.no_subscription", "No active subscription found"),
         )
@@ -122,7 +122,7 @@ class EnforceControllerTest {
     fun `POST enforce Rejected 422 returns HTTP 422`() = billingTestApplication(
         routes = { noAuthInternalRoutes { enforceRoutes(controller) } },
     ) {
-        coEvery { enforceService.enforce(any()) } returns EnforceResult.Rejected(
+        coEvery { enforceService.enforce(any(), any()) } returns EnforceResult.Rejected(
             statusCode = 422,
             error = BillingErrorResponse("billing.unknown_app", "Unknown app slug: signal"),
         )
@@ -140,7 +140,7 @@ class EnforceControllerTest {
     fun `POST enforce Rejected 500 returns HTTP 500`() = billingTestApplication(
         routes = { noAuthInternalRoutes { enforceRoutes(controller) } },
     ) {
-        coEvery { enforceService.enforce(any()) } returns EnforceResult.Rejected(
+        coEvery { enforceService.enforce(any(), any()) } returns EnforceResult.Rejected(
             statusCode = 500,
             error = BillingErrorResponse("billing.internal_error", "Internal billing error"),
         )
@@ -169,7 +169,7 @@ class EnforceControllerTest {
             billingTestApplication(
                 routes = { noAuthInternalRoutes { enforceRoutes(controller) } },
             ) {
-                coEvery { enforceService.enforce(any()) } returns EnforceResult.Rejected(
+                coEvery { enforceService.enforce(any(), any()) } returns EnforceResult.Rejected(
                     statusCode = statusCode,
                     error = BillingErrorResponse("billing.test_error", "Test error"),
                 )

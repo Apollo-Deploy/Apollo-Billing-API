@@ -1,9 +1,8 @@
 package com.apollodeploy.billing.feature.enforce.application
 
+import arrow.core.Either
 import com.apollodeploy.billing.core.BillingEnforcer
-import com.apollodeploy.billing.core.FeatureNotAvailableError
-import com.apollodeploy.billing.core.QuotaExceededError
-import com.apollodeploy.billing.core.SubscriptionNotFoundError
+import com.apollodeploy.billing.core.BillingError
 import com.apollodeploy.billing.feature.enforce.domain.BillingCheck
 import com.apollodeploy.billing.feature.enforce.domain.EnforceRequest
 import com.apollodeploy.billing.feature.enforce.domain.EnforceResult
@@ -14,9 +13,7 @@ import io.kotest.property.forAll
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
-import io.mockk.just
 import io.mockk.mockk
-import io.mockk.Runs
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -37,11 +34,7 @@ class EnforceServiceTest {
         every { repo.getEnforcer("unknown") } returns null
 
         val result = service.enforce(
-            EnforceRequest(
-                orgId = "org_1",
-                appSlug = "unknown",
-                check = BillingCheck.Feature("deployments"),
-            ),
+            EnforceRequest(orgId = "org_1", appSlug = "unknown", check = BillingCheck.Feature("deployments")),
         )
 
         assertIs<EnforceResult.Rejected>(result)
@@ -50,22 +43,17 @@ class EnforceServiceTest {
         assertTrue(result.error.message.contains("unknown"))
     }
 
-    // ─── 1.2 ─────────────────────────────────────────────────────────────────
+    // ─── 1.2 — NoSubscription via Either ─────────────────────────────────────
 
     @Test
-    fun `SubscriptionNotFoundError returns Rejected 404`() = runBlocking {
+    fun `NoSubscription error returns Rejected 404`() = runBlocking {
         every { repo.getEnforcer("signal") } returns enforcer
-        coEvery { enforcer.enforceFeature(any(), any()) } throws SubscriptionNotFoundError(
-            orgId = "org_1",
-            appSlug = "signal",
+        coEvery { enforcer.enforceFeature(any(), any()) } returns Either.Left(
+            BillingError.NoSubscription(orgId = "org_1", appSlug = "signal"),
         )
 
         val result = service.enforce(
-            EnforceRequest(
-                orgId = "org_1",
-                appSlug = "signal",
-                check = BillingCheck.Feature("deployments"),
-            ),
+            EnforceRequest(orgId = "org_1", appSlug = "signal", check = BillingCheck.Feature("deployments")),
         )
 
         assertIs<EnforceResult.Rejected>(result)
@@ -73,24 +61,17 @@ class EnforceServiceTest {
         assertEquals("billing.no_subscription", result.error.code)
     }
 
-    // ─── 1.3 ─────────────────────────────────────────────────────────────────
+    // ─── 1.3 — QuotaExceeded via Either ──────────────────────────────────────
 
     @Test
-    fun `QuotaExceededError returns Rejected 402 with resource, current, limit fields`() = runBlocking {
+    fun `QuotaExceeded returns Rejected 402 with resource, current, limit fields`() = runBlocking {
         every { repo.getEnforcer("signal") } returns enforcer
-        coEvery { enforcer.enforceQuota(any(), any(), any()) } throws QuotaExceededError(
-            resource = "projects",
-            current = 5,
-            limit = 5,
-            appSlug = "signal",
+        coEvery { enforcer.enforceQuota(any(), any(), any()) } returns Either.Left(
+            BillingError.QuotaExceeded(resource = "projects", current = 5, limit = 5, appSlug = "signal"),
         )
 
         val result = service.enforce(
-            EnforceRequest(
-                orgId = "org_1",
-                appSlug = "signal",
-                check = BillingCheck.Quota(resource = "projects", limitKey = "maxProjects"),
-            ),
+            EnforceRequest(orgId = "org_1", appSlug = "signal", check = BillingCheck.Quota(resource = "projects", limitKey = "maxProjects")),
         )
 
         assertIs<EnforceResult.Rejected>(result)
@@ -101,23 +82,17 @@ class EnforceServiceTest {
         assertEquals(5, result.error.limit)
     }
 
-    // ─── 1.4 ─────────────────────────────────────────────────────────────────
+    // ─── 1.4 — FeatureNotAvailable via Either ────────────────────────────────
 
     @Test
-    fun `FeatureNotAvailableError returns Rejected 402 with feature and currentPlan fields`() = runBlocking {
+    fun `FeatureNotAvailable returns Rejected 402 with feature and currentPlan fields`() = runBlocking {
         every { repo.getEnforcer("signal") } returns enforcer
-        coEvery { enforcer.enforceFeature(any(), any()) } throws FeatureNotAvailableError(
-            feature = "multiRegion",
-            currentPlan = "signal-spark",
-            appSlug = "signal",
+        coEvery { enforcer.enforceFeature(any(), any()) } returns Either.Left(
+            BillingError.FeatureNotAvailable(feature = "multiRegion", currentPlan = "signal-spark", appSlug = "signal"),
         )
 
         val result = service.enforce(
-            EnforceRequest(
-                orgId = "org_1",
-                appSlug = "signal",
-                check = BillingCheck.Feature("multiRegion"),
-            ),
+            EnforceRequest(orgId = "org_1", appSlug = "signal", check = BillingCheck.Feature("multiRegion")),
         )
 
         assertIs<EnforceResult.Rejected>(result)
@@ -127,127 +102,117 @@ class EnforceServiceTest {
         assertEquals("signal-spark", result.error.currentPlan)
     }
 
-    // ─── 1.5 ─────────────────────────────────────────────────────────────────
+    // ─── 1.5 — MeterExhausted via Either ─────────────────────────────────────
 
     @Test
-    fun `unexpected RuntimeException returns Rejected 500`() = runBlocking {
+    fun `MeterExhausted returns Rejected 402`() = runBlocking {
         every { repo.getEnforcer("signal") } returns enforcer
-        coEvery { enforcer.enforceFeature(any(), any()) } throws RuntimeException("boom")
+        coEvery { enforcer.enforceMeter(any(), any(), any()) } returns Either.Left(
+            BillingError.MeterExhausted(meterKey = "automationRunBalance", balance = 0, needed = 1, appSlug = "signal"),
+        )
 
         val result = service.enforce(
-            EnforceRequest(
-                orgId = "org_1",
-                appSlug = "signal",
-                check = BillingCheck.Feature("deployments"),
-            ),
+            EnforceRequest(orgId = "org_1", appSlug = "signal", check = BillingCheck.Meter(meterKey = "automationRunBalance", needed = 1)),
         )
 
         assertIs<EnforceResult.Rejected>(result)
-        assertEquals(500, result.statusCode)
-        assertEquals("billing.internal_error", result.error.code)
+        assertEquals(402, result.statusCode)
+        assertEquals("billing.meter_exhausted", result.error.code)
     }
 
-    // ─── 1.6 ─────────────────────────────────────────────────────────────────
+    // ─── 1.6 — ServiceUnavailable (Signal DB down) → 503 ─────────────────────
+
+    @Test
+    fun `ServiceUnavailable returns Rejected 503`() = runBlocking {
+        every { repo.getEnforcer("signal") } returns enforcer
+        coEvery { enforcer.enforceFeature(any(), any()) } returns Either.Left(
+            BillingError.ServiceUnavailable(service = "signal-db", reason = "connection refused"),
+        )
+
+        val result = service.enforce(
+            EnforceRequest(orgId = "org_1", appSlug = "signal", check = BillingCheck.Feature("deployments")),
+        )
+
+        assertIs<EnforceResult.Rejected>(result)
+        assertEquals(503, result.statusCode)
+        assertEquals("billing.service_unavailable", result.error.code)
+    }
+
+    // ─── 1.7 — successful check ───────────────────────────────────────────────
 
     @Test
     fun `successful check returns Allowed`() = runBlocking {
         every { repo.getEnforcer("signal") } returns enforcer
-        coEvery { enforcer.enforceFeature(any(), any()) } just Runs
+        coEvery { enforcer.enforceFeature(any(), any()) } returns Either.Right(Unit)
 
         val result = service.enforce(
-            EnforceRequest(
-                orgId = "org_1",
-                appSlug = "signal",
-                check = BillingCheck.Feature("deployments"),
-            ),
+            EnforceRequest(orgId = "org_1", appSlug = "signal", check = BillingCheck.Feature("deployments")),
         )
 
         assertIs<EnforceResult.Allowed>(result)
     }
 
-    // ─── 1.7 ─────────────────────────────────────────────────────────────────
+    // ─── 1.8 — delegation tests ───────────────────────────────────────────────
 
     @Test
     fun `BillingCheck_Quota delegates resource and limitKey to enforceQuota`() = runBlocking {
         every { repo.getEnforcer("signal") } returns enforcer
-        coEvery { enforcer.enforceQuota(any(), any(), any()) } just Runs
+        coEvery { enforcer.enforceQuota(any(), any(), any()) } returns Either.Right(Unit)
 
         service.enforce(
-            EnforceRequest(
-                orgId = "org_1",
-                appSlug = "signal",
-                check = BillingCheck.Quota(resource = "projects", limitKey = "maxProjects"),
-            ),
+            EnforceRequest(orgId = "org_1", appSlug = "signal", check = BillingCheck.Quota(resource = "projects", limitKey = "maxProjects")),
         )
 
         coVerify { enforcer.enforceQuota("org_1", "projects", "maxProjects") }
     }
 
-    // ─── 1.8 ─────────────────────────────────────────────────────────────────
-
     @Test
     fun `BillingCheck_Feature delegates feature to enforceFeature`() = runBlocking {
         every { repo.getEnforcer("signal") } returns enforcer
-        coEvery { enforcer.enforceFeature(any(), any()) } just Runs
+        coEvery { enforcer.enforceFeature(any(), any()) } returns Either.Right(Unit)
 
         service.enforce(
-            EnforceRequest(
-                orgId = "org_1",
-                appSlug = "signal",
-                check = BillingCheck.Feature(feature = "multiRegion"),
-            ),
+            EnforceRequest(orgId = "org_1", appSlug = "signal", check = BillingCheck.Feature(feature = "multiRegion")),
         )
 
         coVerify { enforcer.enforceFeature("org_1", "multiRegion") }
     }
 
-    // ─── 1.9 ─────────────────────────────────────────────────────────────────
-
     @Test
     fun `BillingCheck_Meter delegates meterKey and needed to enforceMeter`() = runBlocking {
         every { repo.getEnforcer("signal") } returns enforcer
-        coEvery { enforcer.enforceMeter(any(), any(), any()) } just Runs
+        coEvery { enforcer.enforceMeter(any(), any(), any()) } returns Either.Right(Unit)
 
         service.enforce(
-            EnforceRequest(
-                orgId = "org_1",
-                appSlug = "signal",
-                check = BillingCheck.Meter(meterKey = "automationRunBalance", needed = 5),
-            ),
+            EnforceRequest(orgId = "org_1", appSlug = "signal", check = BillingCheck.Meter(meterKey = "automationRunBalance", needed = 5)),
         )
 
         coVerify { enforcer.enforceMeter("org_1", "automationRunBalance", 5) }
     }
 
-    // ─── 1.10 ─────────────────────────────────────────────────────────────────
-    // Feature: billing-comprehensive-unit-tests, Property 6: EnforceService exception-to-result mapping is total
-    //
-    // **Property 6: EnforceService exception-to-result mapping is total**
-    // **Validates: Requirements 20.1, 20.2, 20.3, 1.10**
+    // ─── 1.10 — Property: result mapping is total ─────────────────────────────
 
     @Test
-    fun `property - exception-to-result mapping is total (Property 6)`() = runBlocking {
-        val exceptions: List<Exception> = listOf(
-            SubscriptionNotFoundError("org_1", "signal"),
-            QuotaExceededError("projects", 1, 1, "signal"),
-            FeatureNotAvailableError("multiRegion", "signal-spark", "signal"),
-            RuntimeException("random"),
+    fun `property - BillingError-to-result mapping is total (Property 6)`() = runBlocking {
+        val errors: List<BillingError> = listOf(
+            BillingError.NoSubscription("org_1", "signal"),
+            BillingError.QuotaExceeded("projects", 1, 1, "signal"),
+            BillingError.FeatureNotAvailable("multiRegion", "signal-spark", "signal"),
+            BillingError.MeterExhausted("automationRunBalance", 0, 1, "signal"),
+            BillingError.ServiceUnavailable("signal-db"),
+            BillingError.UnknownApp("signal"),
         )
 
-        forAll(Arb.element(exceptions)) { ex ->
+        forAll(Arb.element(errors)) { error ->
             every { repo.getEnforcer("signal") } returns enforcer
-            coEvery { enforcer.enforceFeature(any(), any()) } throws ex
+            coEvery { enforcer.enforceFeature(any(), any()) } returns Either.Left(error)
 
             val result = service.enforce(
-                EnforceRequest(
-                    orgId = "org_1",
-                    appSlug = "signal",
-                    check = BillingCheck.Feature("deployments"),
-                ),
+                EnforceRequest(orgId = "org_1", appSlug = "signal", check = BillingCheck.Feature("deployments")),
             )
 
             result is EnforceResult.Rejected &&
-                result.statusCode in setOf(402, 404, 422, 500) &&
+                result.statusCode in setOf(402, 404, 422, 500, 503) &&
                 result.error.code.startsWith("billing.")
         }
 

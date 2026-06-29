@@ -82,7 +82,7 @@ class InternalEndpointAuthTest {
     fun `valid JWT is accepted on POST internal billing enforce`() = billingTestApplication(
         routes = { noAuthInternalRoutes { enforceRoutes(enforceController) } },
     ) {
-        coEvery { enforceService.enforce(any()) } returns EnforceResult.Allowed
+        coEvery { enforceService.enforce(any(), any()) } returns EnforceResult.Allowed
 
         val response = client.post("/internal/billing/enforce") {
             header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")

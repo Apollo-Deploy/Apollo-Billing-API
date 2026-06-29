@@ -21,7 +21,7 @@ class UsageIngestServiceTest {
 
     @Test
     fun `repo returns true - response is accepted true with null reason`() = runBlocking {
-        coEvery { repo.ingestUsageEvent(any(), any(), any(), any()) } returns true
+        coEvery { repo.ingestUsageEvent(any(), any(), any(), any(), any()) } returns true
 
         val result = service.ingest(
             UsageIngestRequest(orgId = "org_1", eventKey = "signal.automation.run", quantity = 1),
@@ -35,7 +35,7 @@ class UsageIngestServiceTest {
 
     @Test
     fun `repo returns false - response is accepted false with reason polar_unavailable`() = runBlocking {
-        coEvery { repo.ingestUsageEvent(any(), any(), any(), any()) } returns false
+        coEvery { repo.ingestUsageEvent(any(), any(), any(), any(), any()) } returns false
 
         val result = service.ingest(
             UsageIngestRequest(orgId = "org_1", eventKey = "signal.automation.run", quantity = 1),
@@ -49,7 +49,7 @@ class UsageIngestServiceTest {
 
     @Test
     fun `all request fields are forwarded unchanged to repo`() = runBlocking {
-        coEvery { repo.ingestUsageEvent(any(), any(), any(), any()) } returns true
+        coEvery { repo.ingestUsageEvent(any(), any(), any(), any(), any()) } returns true
 
         service.ingest(
             UsageIngestRequest(
@@ -65,6 +65,7 @@ class UsageIngestServiceTest {
                 "org_1",
                 "email.sent",
                 42,
+                null,
                 mapOf("source" to JsonPrimitive("test")),
             )
         }

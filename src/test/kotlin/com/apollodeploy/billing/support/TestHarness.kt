@@ -7,6 +7,7 @@ import io.ktor.server.application.install
 import io.ktor.server.plugins.BadRequestException
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.statuspages.StatusPages
+import io.ktor.server.request.header
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Routing
 import io.ktor.server.routing.route
@@ -53,19 +54,30 @@ fun billingTestApplication(
  * No-op auth wrapper for unit tests.
  *
  * Production routes use [oauthInternalRoutes] which verifies EdDSA JWTs via
- * the platform's JWKS. In unit tests there is no platform, so we skip the
- * network-dependent guard entirely and test the route handler logic in
- * isolation. Integration / contract tests (requiring a real platform) live
- * separately.
+ * the platform's JWKS. In unit tests there is no platform, so we install a
+ * minimal auth guard that accepts the test token and rejects all others.
+ *
+ * This means controller unit tests correctly get 401 for missing/wrong tokens
+ * without needing a real OAuth server.
  */
 fun Routing.noAuthInternalRoutes(build: Routing.() -> Unit) {
-    route("") { build() }
+    route("") {
+        // Minimal auth: require the test bearer token
+        install(io.ktor.server.application.createRouteScopedPlugin("TestAuth") {
+            onCall { call ->
+                val authHeader = call.request.header("Authorization") ?: ""
+                val token = authHeader.removePrefix("Bearer ").trim()
+                if (token != validServiceToken()) {
+                    throw OAuthServiceAuthException(message = "Missing or invalid service token")
+                }
+            }
+        })
+        build()
+    }
 }
 
 /**
  * Dummy bearer token for tests that exercise routes mounted under
- * [noAuthInternalRoutes]. Auth is bypassed in tests so the token value
- * does not matter, but having a well-formed header keeps handler code that
- * reads the Authorization header from failing with a null-check.
+ * [noAuthInternalRoutes]. The test auth guard accepts only this exact value.
  */
 fun validServiceToken(): String = "test-bearer-token-auth-bypassed-in-unit-tests"

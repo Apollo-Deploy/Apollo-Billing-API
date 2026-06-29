@@ -38,7 +38,7 @@ class EntitlementsServiceTest {
     @Test
     fun `SubscriptionNotFoundError returns NoSubscription`() = runBlocking {
         every { repo.getEnforcer("signal") } returns enforcer
-        coEvery { enforcer.resolveEntitlements(any()) } throws SubscriptionNotFoundError("org_1", "signal")
+        coEvery { enforcer.resolveEntitlements(any()) } returns arrow.core.Either.Left(com.apollodeploy.billing.core.BillingError.NoSubscription("org_1", "signal"))
 
         val result = service.getEntitlements(appSlug = "signal", orgId = "org_1")
 
@@ -50,7 +50,7 @@ class EntitlementsServiceTest {
     @Test
     fun `unexpected exception returns InternalError`() = runBlocking {
         every { repo.getEnforcer("signal") } returns enforcer
-        coEvery { enforcer.resolveEntitlements(any()) } throws RuntimeException("db down")
+        coEvery { enforcer.resolveEntitlements(any()) } returns arrow.core.Either.Left(com.apollodeploy.billing.core.BillingError.ServiceUnavailable("signal-db", "db down"))
 
         val result = service.getEntitlements(appSlug = "signal", orgId = "org_1")
 
@@ -78,7 +78,7 @@ class EntitlementsServiceTest {
         )
 
         every { repo.getEnforcer("signal") } returns enforcer
-        coEvery { enforcer.resolveEntitlements("org_1") } returns appEntitlements
+        coEvery { enforcer.resolveEntitlements("org_1") } returns arrow.core.Either.Right(appEntitlements)
 
         val result = service.getEntitlements(appSlug = "signal", orgId = "org_1")
 
@@ -109,7 +109,7 @@ class EntitlementsServiceTest {
         )
 
         every { repo.getEnforcer("signal") } returns enforcer
-        coEvery { enforcer.resolveEntitlements("org_1") } returns appEntitlements
+        coEvery { enforcer.resolveEntitlements("org_1") } returns arrow.core.Either.Right(appEntitlements)
 
         val result = service.getEntitlements(appSlug = "signal", orgId = "org_1")
 
