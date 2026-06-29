@@ -285,8 +285,19 @@ private fun buildOAuthM2mInternalPlugin(
             logger.warn("[billing:oauth] service client not allowed clientId={}", clientId)
             throw OAuthServiceAuthException(message = "Service client not authorized for internal endpoints")
         }
+
+        // Store authenticated client identity in call attributes for audit logging.
+        // Downstream handlers can use this to log which service is acting on which org.
+        call.attributes.put(AuthenticatedClientIdKey, clientId ?: "unknown")
     }
 }
+
+/** Ktor attribute key for the authenticated service client ID. */
+val AuthenticatedClientIdKey = io.ktor.util.AttributeKey<String>("authenticatedClientId")
+
+/** Extension to retrieve the authenticated client ID from a call (post-auth). */
+fun io.ktor.server.application.ApplicationCall.authenticatedClientId(): String? =
+    attributes.getOrNull(AuthenticatedClientIdKey)
 
 /**
  * Wraps routes inside an OAuth M2M guard.

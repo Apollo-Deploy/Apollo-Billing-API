@@ -13,6 +13,7 @@ import com.apollodeploy.billing.feature.webhook.api.polarWebhookRoutes
 import com.apollodeploy.billing.infrastructure.config.AppConfig
 import com.apollodeploy.billing.infrastructure.iam.OAuthServiceAuthException
 import com.apollodeploy.billing.infrastructure.iam.oauthInternalRoutes
+import com.apollodeploy.billing.infrastructure.validation.InvalidRedirectUrlException
 import com.apollodeploy.tesseract.ManifestInfo
 import com.apollodeploy.tesseract.TesseractPlugin
 import io.github.smiley4.ktoropenapi.OpenApi
@@ -22,6 +23,9 @@ import io.github.smiley4.ktoropenapi.config.OutputFormat
 import io.github.smiley4.ktoropenapi.config.SchemaGenerator
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.*
+import io.ktor.server.plugins.ratelimit.RateLimit
+import io.ktor.server.plugins.ratelimit.RateLimitName
+import io.ktor.server.plugins.ratelimit.rateLimit
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
 import io.ktor.server.netty.*
@@ -80,6 +84,20 @@ private fun Application.configure(assembly: AppAssembly) {
 // ── Private helpers ───────────────────────────────────────────────────────────
 
 private fun Application.installCorePlugins() {
+    install(RateLimit) {
+        register(RateLimitName("webhook")) {
+            rateLimiter(limit = 100, refillPeriod = kotlin.time.Duration.parse("60s"))
+        }
+        register(RateLimitName("internal")) {
+            rateLimiter(limit = 1000, refillPeriod = kotlin.time.Duration.parse("60s"))
+            requestKey { call -> call.request.local.remoteHost }
+        }
+        register(RateLimitName("public")) {
+            rateLimiter(limit = 60, refillPeriod = kotlin.time.Duration.parse("60s"))
+            requestKey { call -> call.request.local.remoteHost }
+        }
+    }
+
     install(OpenApi) {
         info {
             title = "Apollo Billing API"
@@ -168,6 +186,15 @@ private fun Application.installErrorHandling(logger: org.slf4j.Logger) {
                 mapOf("code" to cause.code, "message" to cause.message),
             )
         }
+        exception<InvalidRedirectUrlException> { call, cause ->
+            call.respond(
+                HttpStatusCode.BadRequest,
+                mapOf(
+                    "code" to "billing.invalid_redirect_url",
+                    "message" to "Invalid ${cause.fieldName}: ${cause.reason}",
+                ),
+            )
+        }
         exception<Throwable> { call, cause ->
             logger.error("Unhandled exception on ${call.request.local.uri}", cause)
             call.respond(
@@ -182,14 +209,20 @@ private fun Application.registerRoutes(assembly: AppAssembly) {
     routing {
         healthRoutes(assembly.healthController)
         docsRoutes()
-        productCatalogRoutes(assembly.productCatalogController)
-        oauthInternalRoutes(assembly.httpClient) {
-            enforceRoutes(assembly.enforceController)
-            entitlementsRoutes(assembly.entitlementsController)
-            checkoutRoutes(assembly.checkoutController)
-            customerBillingRoutes(assembly.customerBillingController)
-            usageIngestRoutes(assembly.usageIngestController)
+        rateLimit(RateLimitName("public")) {
+            productCatalogRoutes(assembly.productCatalogController)
         }
-        polarWebhookRoutes(assembly.polarWebhookController)
+        oauthInternalRoutes(assembly.httpClient) {
+            rateLimit(RateLimitName("internal")) {
+                enforceRoutes(assembly.enforceController)
+                entitlementsRoutes(assembly.entitlementsController)
+                checkoutRoutes(assembly.checkoutController)
+                customerBillingRoutes(assembly.customerBillingController)
+                usageIngestRoutes(assembly.usageIngestController)
+            }
+        }
+        rateLimit(RateLimitName("webhook")) {
+            polarWebhookRoutes(assembly.polarWebhookController)
+        }
     }
 }

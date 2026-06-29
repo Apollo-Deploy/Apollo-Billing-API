@@ -32,6 +32,9 @@ import com.apollodeploy.billing.infrastructure.persistence.DatabasePool
 import com.apollodeploy.billing.infrastructure.persistence.SubscriptionRepo
 import com.apollodeploy.billing.infrastructure.polar.PolarClient
 import com.apollodeploy.billing.infrastructure.polar.PolarWebhookHandler
+import com.apollodeploy.billing.infrastructure.redis.PolarStateCache
+import com.apollodeploy.billing.infrastructure.redis.RedisPool
+import com.apollodeploy.billing.infrastructure.webhook.WebhookDeduplicator
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
@@ -62,52 +65,39 @@ class AppAssembly private constructor(
     private val db: DatabasePool?,
     private val platformReaderDb: DatabasePool?,
     private val signalDb: DatabasePool?,
+    private val redis: RedisPool?,
 ) : AutoCloseable {
+
     companion object {
         private val logger = LoggerFactory.getLogger(AppAssembly::class.java)
 
         fun create(): AppAssembly {
             logger.info("[billing] Assembling application")
 
-            // ── Infrastructure ────────────────────────────────────────────────
             val db = DatabasePool.create()
             val platformReaderDb = DatabasePool.createPlatformReader()
             val signalDb = DatabasePool.createSignal()
             val httpClient = buildHttpClient()
+            val redis = RedisPool.create()
 
             val subscriptionRepo = SubscriptionRepo(db)
-
-            // ── Polar client ──────────────────────────────────────────────────
             val polarClient = buildPolarClient(httpClient)
-
-            // ── OAuth M2M client (outbound — used by AuditLogClient) ──────────
+            val polarStateCache = PolarStateCache(polarClient, redis)
             val oAuthM2mClient = buildOAuthM2mClient(httpClient)
-
-            // ── Audit log client ──────────────────────────────────────────────
             val auditLogClient = buildAuditLogClient(httpClient)
 
-            // ── App registry ──────────────────────────────────────────────────
-            // Register each app here.
-            // To add a new app: create a XxxBillingConfig, call buildRegistration(), add to the list.
+            val signalApp = SignalBillingConfig(
+                db, platformReaderDb, signalDb, subscriptionRepo, polarClient, polarStateCache,
+            ).buildRegistration()
 
-            val signalApp = SignalBillingConfig(db, platformReaderDb, signalDb, subscriptionRepo, polarClient).buildRegistration()
+            val appRegistry = AppRegistry(listOf(signalApp))
 
-            val appRegistry =
-                AppRegistry(
-                    listOf(
-                        signalApp,
-                    ),
-                )
+            val polarWebhookHandler = PolarWebhookHandler(
+                subscriptionRepo = subscriptionRepo,
+                appRegistry = appRegistry,
+                auditLogClient = auditLogClient,
+            )
 
-            // ── Polar webhook handler ─────────────────────────────────────────
-            val polarWebhookHandler =
-                PolarWebhookHandler(
-                    subscriptionRepo = subscriptionRepo,
-                    appRegistry = appRegistry,
-                    auditLogClient = auditLogClient,
-                )
-
-            // ── Feature controllers ──────────────────────────────────────────
             val productCatalogRepo = ProductCatalogRepo(appRegistry, polarClient)
             runBlocking {
                 appRegistry.knownApps().forEach { appSlug ->
@@ -115,7 +105,7 @@ class AppAssembly private constructor(
                 }
             }
 
-            val controllers = buildControllers(appRegistry, polarClient, productCatalogRepo, polarWebhookHandler, auditLogClient)
+            val controllers = buildControllers(appRegistry, polarClient, productCatalogRepo, polarWebhookHandler, auditLogClient, redis)
 
             logger.info("[billing] Assembly complete — registered apps: {}", appRegistry.knownApps())
 
@@ -135,15 +125,12 @@ class AppAssembly private constructor(
                 db = db,
                 platformReaderDb = platformReaderDb,
                 signalDb = signalDb,
+                redis = redis,
             )
         }
 
         /**
          * Manifest-only assembly for SDK generation (TESSERACT_GENERATE=1).
-         *
-         * Skips all database pool creation and network warm-up so the process can
-         * run without a reachable Postgres or Polar instance. The resulting assembly
-         * is sufficient to register every route and let TesseractPlugin collect them.
          */
         fun createForManifest(): AppAssembly {
             logger.info("[billing] Assembling application (manifest-only mode — no DB connections)")
@@ -151,46 +138,38 @@ class AppAssembly private constructor(
             val httpClient = buildHttpClient()
             val polarClient = buildPolarClient(httpClient)
 
-            // Stub subscription repo — DB is never queried during route registration.
             val stubDb = DatabasePool.createStub()
             val subscriptionRepo = SubscriptionRepo(stubDb)
 
-            val signalApp =
-                SignalBillingConfig(
-                    db = stubDb,
-                    platformReaderDb = stubDb,
-                    signalDb = null,
-                    subscriptionRepo = subscriptionRepo,
-                    polarClient = polarClient,
-                ).buildRegistration()
+            val signalApp = SignalBillingConfig(
+                db = stubDb,
+                platformReaderDb = stubDb,
+                signalDb = null,
+                subscriptionRepo = subscriptionRepo,
+                polarClient = polarClient,
+            ).buildRegistration()
 
             val appRegistry = AppRegistry(listOf(signalApp))
 
-            // Audit log client is disabled in manifest mode (no network calls needed)
-            val auditLogClient =
-                AuditLogClient(
-                    httpClient = httpClient,
-                    platformUrl = "",
-                    clientId = "",
-                    clientSecret = "",
-                    enabled = false,
-                )
+            val auditLogClient = AuditLogClient(
+                httpClient = httpClient,
+                platformUrl = "",
+                clientId = "",
+                clientSecret = "",
+                enabled = false,
+            )
 
-            val polarWebhookHandler =
-                PolarWebhookHandler(
-                    subscriptionRepo = subscriptionRepo,
-                    appRegistry = appRegistry,
-                    auditLogClient = auditLogClient,
-                )
+            val polarWebhookHandler = PolarWebhookHandler(
+                subscriptionRepo = subscriptionRepo,
+                appRegistry = appRegistry,
+                auditLogClient = auditLogClient,
+            )
 
-            // Skip the catalog warm-up — no Polar calls in manifest mode.
             val productCatalogRepo = ProductCatalogRepo(appRegistry, polarClient)
-
             val controllers = buildControllers(appRegistry, polarClient, productCatalogRepo, polarWebhookHandler, auditLogClient)
 
             logger.info("[billing] Manifest assembly complete — registered apps: {}", appRegistry.knownApps())
 
-            // Stub M2M client — no network calls in manifest mode
             val stubOAuthM2mClient = OAuthM2mClient(
                 httpClient = httpClient,
                 platformUrl = "",
@@ -214,6 +193,7 @@ class AppAssembly private constructor(
                 db = null,
                 platformReaderDb = null,
                 signalDb = null,
+                redis = null,
             )
         }
 
@@ -222,12 +202,7 @@ class AppAssembly private constructor(
         private fun buildHttpClient(): HttpClient =
             HttpClient(CIO) {
                 install(ContentNegotiation) {
-                    json(
-                        Json {
-                            ignoreUnknownKeys = true
-                            explicitNulls = false
-                        },
-                    )
+                    json(Json { ignoreUnknownKeys = true; explicitNulls = false })
                 }
             }
 
@@ -273,6 +248,7 @@ class AppAssembly private constructor(
             productCatalogRepo: ProductCatalogRepo,
             polarWebhookHandler: PolarWebhookHandler,
             auditLogClient: AuditLogClient,
+            redis: RedisPool? = null,
         ): Controllers =
             Controllers(
                 health = HealthController(HealthService()),
@@ -281,13 +257,14 @@ class AppAssembly private constructor(
                 entitlements = EntitlementsController(EntitlementsService(EntitlementsRepo(appRegistry))),
                 checkout = CheckoutController(CheckoutService(CheckoutRepo(appRegistry, polarClient), auditLogClient)),
                 customerBilling = CustomerBillingController(CustomerBillingService(CustomerBillingRepo(polarClient), auditLogClient)),
-                usageIngest = UsageIngestController(UsageIngestService(UsageIngestRepo(polarClient), auditLogClient)),
-                polarWebhook = PolarWebhookController(PolarWebhookService(PolarWebhookRepo(polarWebhookHandler))),
+                usageIngest = UsageIngestController(UsageIngestService(UsageIngestRepo(polarClient, redis), auditLogClient)),
+                polarWebhook = PolarWebhookController(PolarWebhookService(PolarWebhookRepo(polarWebhookHandler), WebhookDeduplicator(redis))),
             )
     }
 
     override fun close() {
         runCatching { httpClient.close() }
+        runCatching { redis?.close() }
         runCatching { signalDb?.close() }
         runCatching { platformReaderDb?.close() }
         runCatching { db?.close() }
