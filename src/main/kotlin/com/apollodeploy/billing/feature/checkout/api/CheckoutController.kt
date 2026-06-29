@@ -24,6 +24,14 @@ class CheckoutController(
                         "message" to "Unknown product ${result.productSlug} for app ${result.appSlug}",
                     ),
                 )
+            is CreateCheckoutResult.InvalidUrl ->
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    mapOf(
+                        "code" to "billing.invalid_redirect_url",
+                        "message" to "Invalid ${result.field}: ${result.reason}",
+                    ),
+                )
             CreateCheckoutResult.Unavailable ->
                 call.respond(
                     HttpStatusCode.BadGateway,

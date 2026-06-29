@@ -7,12 +7,51 @@ import com.apollodeploy.billing.feature.checkout.infrastructure.persistence.Chec
 import com.apollodeploy.billing.infrastructure.audit.AuditEvent
 import com.apollodeploy.billing.infrastructure.audit.AuditLogClient
 import com.apollodeploy.billing.infrastructure.audit.AuditStatus
+import com.apollodeploy.billing.infrastructure.validation.UrlValidator
 
 class CheckoutService(
     private val checkoutRepo: CheckoutRepo,
     private val auditLogClient: AuditLogClient,
 ) {
     suspend fun createCheckout(req: CreateCheckoutRequest): CreateCheckoutResult {
+        // Validate redirect URLs to prevent open-redirect attacks
+        val successUrlError = UrlValidator.validateRedirectUrl(req.successUrl)
+        if (successUrlError != null) {
+            auditLogClient.log(
+                AuditEvent(
+                    module = "checkout",
+                    action = "create_failed",
+                    resourceType = "checkout_session",
+                    organizationId = req.orgId,
+                    status = AuditStatus.FAILURE,
+                    errorMessage = "Invalid successUrl: $successUrlError",
+                    metadata = mapOf("appSlug" to req.appSlug, "productSlug" to req.productSlug),
+                ),
+            )
+            return CreateCheckoutResult.InvalidUrl(
+                field = "successUrl",
+                reason = successUrlError,
+            )
+        }
+        val returnUrlError = UrlValidator.validateRedirectUrl(req.returnUrl)
+        if (returnUrlError != null) {
+            auditLogClient.log(
+                AuditEvent(
+                    module = "checkout",
+                    action = "create_failed",
+                    resourceType = "checkout_session",
+                    organizationId = req.orgId,
+                    status = AuditStatus.FAILURE,
+                    errorMessage = "Invalid returnUrl: $returnUrlError",
+                    metadata = mapOf("appSlug" to req.appSlug, "productSlug" to req.productSlug),
+                ),
+            )
+            return CreateCheckoutResult.InvalidUrl(
+                field = "returnUrl",
+                reason = returnUrlError,
+            )
+        }
+
         val product =
             checkoutRepo.findProduct(req.appSlug, req.productSlug)
                 ?: run {

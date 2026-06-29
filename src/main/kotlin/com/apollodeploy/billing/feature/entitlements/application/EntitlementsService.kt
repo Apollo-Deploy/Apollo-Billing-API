@@ -1,7 +1,7 @@
 package com.apollodeploy.billing.feature.entitlements.application
 
 import com.apollodeploy.billing.core.AppEntitlements
-import com.apollodeploy.billing.core.SubscriptionNotFoundError
+import com.apollodeploy.billing.core.BillingError
 import com.apollodeploy.billing.feature.entitlements.domain.EntitlementsResponse
 import com.apollodeploy.billing.feature.entitlements.domain.EntitlementsResult
 import com.apollodeploy.billing.feature.entitlements.infrastructure.persistence.EntitlementsRepo
@@ -20,14 +20,24 @@ class EntitlementsService(
             entitlementsRepo.getEnforcer(appSlug)
                 ?: return EntitlementsResult.UnknownApp(appSlug)
 
-        return try {
-            EntitlementsResult.Found(enforcer.resolveEntitlements(orgId).toResponse())
-        } catch (e: SubscriptionNotFoundError) {
-            EntitlementsResult.NoSubscription
-        } catch (e: Exception) {
-            logger.error("[billing:entitlements] error app={} org={}", appSlug, orgId, e)
-            EntitlementsResult.InternalError
-        }
+        return enforcer.resolveEntitlements(orgId).fold(
+            ifLeft = { error ->
+                when (error) {
+                    is BillingError.NoSubscription -> EntitlementsResult.NoSubscription
+                    is BillingError.ServiceUnavailable -> {
+                        logger.error("[billing:entitlements] service unavailable app={} org={}: {}", appSlug, orgId, error.message)
+                        EntitlementsResult.InternalError
+                    }
+                    else -> {
+                        logger.error("[billing:entitlements] unexpected error app={} org={}: {}", appSlug, orgId, error.message)
+                        EntitlementsResult.InternalError
+                    }
+                }
+            },
+            ifRight = { entitlements ->
+                EntitlementsResult.Found(entitlements.toResponse())
+            },
+        )
     }
 }
 

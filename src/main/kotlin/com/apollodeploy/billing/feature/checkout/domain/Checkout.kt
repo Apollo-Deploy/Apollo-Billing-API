@@ -32,5 +32,10 @@ sealed class CreateCheckoutResult {
         val productSlug: String,
     ) : CreateCheckoutResult()
 
+    data class InvalidUrl(
+        val field: String,
+        val reason: String,
+    ) : CreateCheckoutResult()
+
     data object Unavailable : CreateCheckoutResult()
 }

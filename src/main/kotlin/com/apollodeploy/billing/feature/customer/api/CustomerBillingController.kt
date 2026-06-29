@@ -70,9 +70,8 @@ private suspend fun ApplicationCall.respondPolarFailure(result: CustomerBillingR
         status,
         mapOf(
             "code" to result.fallbackCode,
-            "message" to "Polar request failed",
-            "polarStatus" to (result.statusCode?.toString() ?: "unavailable"),
-            "polarError" to (result.errorBody ?: ""),
+            "message" to "Billing provider request failed",
+            "status" to (result.statusCode?.toString() ?: "unavailable"),
         ),
     )
 }

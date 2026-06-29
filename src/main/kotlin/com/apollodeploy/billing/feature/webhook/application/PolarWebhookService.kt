@@ -5,11 +5,13 @@ import com.apollodeploy.billing.feature.webhook.infrastructure.persistence.Polar
 import com.apollodeploy.billing.infrastructure.config.AppConfig
 import com.apollodeploy.billing.infrastructure.polar.PolarWebhookEvent
 import com.apollodeploy.billing.infrastructure.polar.PolarWebhookVerifier
+import com.apollodeploy.billing.infrastructure.webhook.WebhookDeduplicator
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
 
 class PolarWebhookService(
     private val polarWebhookRepo: PolarWebhookRepo,
+    private val deduplicator: WebhookDeduplicator = WebhookDeduplicator(),
 ) {
     private val logger = LoggerFactory.getLogger(PolarWebhookService::class.java)
     private val json = Json { ignoreUnknownKeys = true }
@@ -30,6 +32,12 @@ class PolarWebhookService(
         ) {
             logger.warn("[billing:webhook] invalid signature from Polar - rejecting")
             return PolarWebhookResult.InvalidSignature
+        }
+
+        // Deduplicate: reject replayed webhooks within the dedup window
+        if (!deduplicator.tryProcess(webhookId)) {
+            logger.info("[billing:webhook] duplicate webhook-id={} — skipping", webhookId)
+            return PolarWebhookResult.Received // Return 200 so Polar doesn't retry
         }
 
         val event =

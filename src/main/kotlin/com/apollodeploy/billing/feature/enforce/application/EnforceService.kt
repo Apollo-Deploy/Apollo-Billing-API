@@ -1,8 +1,8 @@
 package com.apollodeploy.billing.feature.enforce.application
 
-import com.apollodeploy.billing.core.FeatureNotAvailableError
-import com.apollodeploy.billing.core.QuotaExceededError
-import com.apollodeploy.billing.core.SubscriptionNotFoundError
+import arrow.core.Either
+import com.apollodeploy.billing.core.BillingError
+import com.apollodeploy.billing.core.httpStatus
 import com.apollodeploy.billing.feature.enforce.domain.BillingCheck
 import com.apollodeploy.billing.feature.enforce.domain.BillingErrorResponse
 import com.apollodeploy.billing.feature.enforce.domain.EnforceRequest
@@ -12,7 +12,6 @@ import com.apollodeploy.billing.infrastructure.audit.AuditEvent
 import com.apollodeploy.billing.infrastructure.audit.AuditLogClient
 import com.apollodeploy.billing.infrastructure.audit.AuditRiskLevel
 import com.apollodeploy.billing.infrastructure.audit.AuditStatus
-import io.ktor.http.HttpStatusCode
 import org.slf4j.LoggerFactory
 
 class EnforceService(
@@ -21,103 +20,84 @@ class EnforceService(
 ) {
     private val logger = LoggerFactory.getLogger(EnforceService::class.java)
 
-    suspend fun enforce(req: EnforceRequest): EnforceResult {
+    suspend fun enforce(req: EnforceRequest, callerClientId: String? = null): EnforceResult {
         val enforcer =
             enforceRepo.getEnforcer(req.appSlug)
                 ?: return EnforceResult.Rejected(
-                    statusCode = HttpStatusCode.UnprocessableEntity.value,
-                    error =
-                        BillingErrorResponse(
-                            code = "billing.unknown_app",
-                            message = "Unknown app slug: ${req.appSlug}",
-                        ),
+                    statusCode = 422,
+                    error = BillingErrorResponse(
+                        code = "billing.unknown_app",
+                        message = "Unknown app slug: ${req.appSlug}",
+                    ),
                 )
 
-        return try {
-            when (val check = req.check) {
-                is BillingCheck.Quota -> enforcer.enforceQuota(req.orgId, check.resource, check.limitKey)
-                is BillingCheck.Feature -> enforcer.enforceFeature(req.orgId, check.feature)
-                is BillingCheck.Meter -> enforcer.enforceMeter(req.orgId, check.meterKey, check.needed)
-            }
-            EnforceResult.Allowed
-        } catch (e: SubscriptionNotFoundError) {
-            logger.debug("[billing:enforce] no subscription org={} app={} - allowing", req.orgId, req.appSlug)
-            EnforceResult.Rejected(
-                statusCode = HttpStatusCode.NotFound.value,
-                error =
-                    BillingErrorResponse(
-                        code = "billing.no_subscription",
-                        message = "No active subscription found",
-                    ),
-            )
-        } catch (e: QuotaExceededError) {
-            auditLogClient.log(
-                AuditEvent(
-                    module = "enforcement",
-                    action = "quota_exceeded",
-                    resourceType = "quota",
-                    organizationId = req.orgId,
-                    status = AuditStatus.FAILURE,
-                    riskLevel = AuditRiskLevel.MEDIUM,
-                    errorMessage = e.message,
-                    metadata =
-                        mapOf(
-                            "appSlug" to req.orgId,
-                            "resource" to e.resource,
-                            "current" to e.current.toString(),
-                            "limit" to e.limit.toString(),
-                        ),
-                ),
-            )
-            EnforceResult.Rejected(
-                statusCode = HttpStatusCode.PaymentRequired.value,
-                error =
-                    BillingErrorResponse(
-                        code = "billing.quota_exceeded",
-                        message = e.message ?: "Quota exceeded",
-                        resource = e.resource,
-                        current = e.current,
-                        limit = e.limit,
-                    ),
-            )
-        } catch (e: FeatureNotAvailableError) {
-            auditLogClient.log(
-                AuditEvent(
-                    module = "enforcement",
-                    action = "feature_denied",
-                    resourceType = "feature",
-                    organizationId = req.orgId,
-                    status = AuditStatus.FAILURE,
-                    riskLevel = AuditRiskLevel.LOW,
-                    errorMessage = e.message,
-                    metadata =
-                        mapOf(
-                            "appSlug" to e.appSlug,
-                            "feature" to e.feature,
-                            "currentPlan" to e.currentPlan,
-                        ),
-                ),
-            )
-            EnforceResult.Rejected(
-                statusCode = HttpStatusCode.PaymentRequired.value,
-                error =
-                    BillingErrorResponse(
-                        code = "billing.feature_unavailable",
-                        message = e.message ?: "Feature not available",
-                        feature = e.feature,
-                        currentPlan = e.currentPlan,
-                    ),
-            )
-        } catch (e: Exception) {
-            logger.error("[billing:enforce] unexpected error org={} app={}", req.orgId, req.appSlug, e)
-            EnforceResult.Rejected(
-                statusCode = HttpStatusCode.InternalServerError.value,
-                error =
-                    BillingErrorResponse(
-                        code = "billing.internal_error",
-                        message = "Internal billing error",
-                    ),
-            )
+        val result: Either<BillingError, Unit> = when (val check = req.check) {
+            is BillingCheck.Quota -> enforcer.enforceQuota(req.orgId, check.resource, check.limitKey)
+            is BillingCheck.Feature -> enforcer.enforceFeature(req.orgId, check.feature)
+            is BillingCheck.Meter -> enforcer.enforceMeter(req.orgId, check.meterKey, check.needed)
         }
+
+        return result.fold(
+            ifLeft = { error ->
+                logBillingError(error, req, callerClientId)
+                EnforceResult.Rejected(
+                    statusCode = error.httpStatus(),
+                    error = error.toErrorResponse(),
+                )
+            },
+            ifRight = { EnforceResult.Allowed },
+        )
+    }
+
+    private fun logBillingError(error: BillingError, req: EnforceRequest, callerClientId: String?) {
+        val (action, riskLevel) = when (error) {
+            is BillingError.QuotaExceeded -> "quota_exceeded" to AuditRiskLevel.MEDIUM
+            is BillingError.MeterExhausted -> "meter_exhausted" to AuditRiskLevel.MEDIUM
+            is BillingError.FeatureNotAvailable -> "feature_denied" to AuditRiskLevel.LOW
+            is BillingError.NoSubscription -> {
+                logger.debug("[billing:enforce] no subscription org={} app={}", req.orgId, req.appSlug)
+                return // Don't audit log no-subscription (common for free users)
+            }
+            is BillingError.ServiceUnavailable -> {
+                logger.error("[billing:enforce] service unavailable org={} app={}: {}", req.orgId, req.appSlug, error.message)
+                return
+            }
+            else -> "enforcement_failed" to AuditRiskLevel.LOW
+        }
+
+        auditLogClient.log(
+            AuditEvent(
+                module = "enforcement",
+                action = action,
+                resourceType = "billing_check",
+                organizationId = req.orgId,
+                userId = callerClientId,
+                status = AuditStatus.FAILURE,
+                riskLevel = riskLevel,
+                errorMessage = error.message,
+                metadata = buildMap {
+                    put("appSlug", req.appSlug)
+                    put("errorCode", error.code)
+                    callerClientId?.let { put("callerClientId", it) }
+                },
+            ),
+        )
     }
 }
+
+private fun BillingError.toErrorResponse(): BillingErrorResponse =
+    when (this) {
+        is BillingError.QuotaExceeded -> BillingErrorResponse(
+            code = code, message = message, resource = resource, current = current, limit = limit,
+        )
+        is BillingError.MeterExhausted -> BillingErrorResponse(
+            code = code, message = message, resource = meterKey, current = balance, limit = needed,
+        )
+        is BillingError.FeatureNotAvailable -> BillingErrorResponse(
+            code = code, message = message, feature = feature, currentPlan = currentPlan,
+        )
+        is BillingError.NoSubscription -> BillingErrorResponse(code = code, message = message)
+        is BillingError.UnknownApp -> BillingErrorResponse(code = code, message = message)
+        is BillingError.ServiceUnavailable -> BillingErrorResponse(code = code, message = message)
+        is BillingError.InvalidInput -> BillingErrorResponse(code = code, message = message)
+    }

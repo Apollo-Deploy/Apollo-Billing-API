@@ -8,6 +8,7 @@ data class UsageIngestRequest(
     val orgId: String,
     val eventKey: String,
     val quantity: Int = 1,
+    val idempotencyKey: String? = null,
     val metadata: Map<String, JsonElement> = emptyMap(),
 )
 
@@ -15,4 +16,5 @@ data class UsageIngestRequest(
 data class UsageIngestResponse(
     val accepted: Boolean,
     val reason: String? = null,
+    val deduplicated: Boolean = false,
 )

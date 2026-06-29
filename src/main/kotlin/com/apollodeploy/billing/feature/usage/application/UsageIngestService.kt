@@ -11,12 +11,32 @@ class UsageIngestService(
     private val usageIngestRepo: UsageIngestRepo,
     private val auditLogClient: AuditLogClient,
 ) {
+    companion object {
+        /** Maximum quantity per single usage event. Prevents abuse via extreme values. */
+        private const val MAX_QUANTITY = 10_000
+    }
+
     suspend fun ingest(req: UsageIngestRequest): UsageIngestResponse {
+        // Validate quantity — must be positive and within bounds
+        if (req.quantity < 1) {
+            return UsageIngestResponse(accepted = false, reason = "quantity must be >= 1")
+        }
+        if (req.quantity > MAX_QUANTITY) {
+            return UsageIngestResponse(accepted = false, reason = "quantity exceeds maximum ($MAX_QUANTITY)")
+        }
+        if (req.orgId.isBlank()) {
+            return UsageIngestResponse(accepted = false, reason = "orgId is required")
+        }
+        if (req.eventKey.isBlank()) {
+            return UsageIngestResponse(accepted = false, reason = "eventKey is required")
+        }
+
         val accepted =
             usageIngestRepo.ingestUsageEvent(
                 orgId = req.orgId,
                 eventKey = req.eventKey,
                 quantity = req.quantity,
+                idempotencyKey = req.idempotencyKey,
                 metadata = req.metadata,
             )
 
