@@ -520,26 +520,35 @@ For each new app:
 - Confirm customer state shows expected `active_subscriptions`,
   `granted_benefits`, and `active_meters`.
 
-## Signal Sandbox Bootstrap
+## Signal Polar Catalog Bootstrap
 
-For Signal sandbox setup, run:
+To create or update the Signal product catalog in Polar, run:
 
 ```bash
+# Sandbox
 POLAR_API_KEY="..." make polar-sandbox
+
+# Production
+POLAR_API_KEY="..." make polar-production
+
+# Or directly, with fine-grained control
+POLAR_API_KEY="..." scripts/polar/setup-signal.sh --env sandbox --setup both
+POLAR_API_KEY="..." scripts/polar/setup-signal.sh --env production --setup email
 ```
 
-The script creates or reuses resources tagged with
-`apollo_namespace=apollo-signal-sandbox-v1`:
+Use `--setup email`, `--setup sms`, or `--setup both` to control which parts of
+the catalog are created. The script is idempotent — it reuses existing resources
+tagged with the namespace metadata.
 
-- email and automation-run meters,
-- monthly subscription plans with included email credits,
-- metered email overage prices,
-- dedicated IP monthly add-on,
-- email and automation PAYG metered products,
-- one-time automation run packs backed by meter-credit benefits.
+The script reads pricing and product definitions from
+`scripts/polar/signal-catalog.sh`. Update that file to change prices,
+descriptions, or add new tiers.
 
-It writes the created IDs to `build/polar/signal-sandbox-products.json` and
-prints the catalog values that need to be copied into the Signal catalog.
+It writes the created IDs to `build/polar/signal-{env}-products.json` and
+prints `const val` declarations ready to paste into `SignalPlanCatalog.kt`.
+
+For provisioning enterprise plans to individual clients, see
+`docs/enterprise-plan-provisioning.md`.
 
 ## Implementation Checklist
 
