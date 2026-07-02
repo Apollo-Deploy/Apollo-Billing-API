@@ -1,0 +1,29 @@
+# Build outputs — rebuilt inside the multi-stage Dockerfile
+build/
+.gradle/
+bin/
+
+# Local dev config (may contain secrets; env vars override at runtime)
+src/main/resources/application.local.conf
+
+# Docs / plans / scripts not needed in the image
+docs/
+plans/
+scripts/
+nginx/
+
+# VCS / IDE
+.git/
+.gitignore
+.idea/
+*.iml
+
+# Env & secrets — provided at runtime, never baked into the image
+.env
+.env.*
+!.env.example
+
+# Misc
+*.md
+Makefile
+docker-compose.yml
