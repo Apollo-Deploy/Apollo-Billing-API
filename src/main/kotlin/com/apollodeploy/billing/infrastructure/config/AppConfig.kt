@@ -21,10 +21,24 @@ object AppConfig {
     val platformDbName: String = config.getString("apollo-billing.platform-db.name")
     val platformDbUser: String = config.getString("apollo-billing.platform-db.user")
     val platformDbPassword: String = config.getString("apollo-billing.platform-db.password")
+    val platformDbSslmode: String = config.getString("apollo-billing.platform-db.sslmode")
     val platformDbPoolMaxSize: Int = config.getInt("apollo-billing.platform-db.pool-max-size")
     val platformDbIdleTimeoutMs: Long = config.getLong("apollo-billing.platform-db.idle-timeout-ms")
     val platformDbConnectionTimeoutMs: Long = config.getLong("apollo-billing.platform-db.connection-timeout-ms")
     val platformDbStatementTimeoutMs: Long = config.getLong("apollo-billing.platform-db.statement-timeout-ms")
+
+    // Provider-aware SSL defaults
+    private val platformRawSsl: String = config.getString("apollo-billing.platform-db.sslmode")
+    private val signalRawSsl: String = config.getString("apollo-billing.signal-db.sslmode")
+    private val dbProvider: String = (System.getenv("DB_PROVIDER") ?: config.getString("apollo-billing.db-provider")).lowercase()
+    val platformDbEffectiveSslmode: String =
+        if (dbProvider == "planetscale" || dbProvider == "pscale") {
+            if (platformRawSsl.equals("disable", ignoreCase = true)) "disable" else "require"
+        } else platformRawSsl.ifBlank { "disable" }
+    val signalDbEffectiveSslmode: String =
+        if (dbProvider == "planetscale" || dbProvider == "pscale") {
+            if (signalRawSsl.equals("disable", ignoreCase = true)) "disable" else "require"
+        } else signalRawSsl.ifBlank { "disable" }
 
     // Platform reader DB -- billing_superuser role on the platform database
     val platformReaderDbUser: String = config.getString("apollo-billing.platform-reader-db.user")
@@ -91,6 +105,7 @@ object AppConfig {
     val signalDbName: String = config.getString("apollo-billing.signal-db.name")
     val signalDbUser: String = config.getString("apollo-billing.signal-db.user")
     val signalDbPassword: String = config.getString("apollo-billing.signal-db.password")
+    val signalDbSslmode: String = config.getString("apollo-billing.signal-db.sslmode")
     val signalDbPoolMaxSize: Int = config.getInt("apollo-billing.signal-db.pool-max-size")
     val signalDbIdleTimeoutMs: Long = config.getLong("apollo-billing.signal-db.idle-timeout-ms")
     val signalDbConnectionTimeoutMs: Long = config.getLong("apollo-billing.signal-db.connection-timeout-ms")

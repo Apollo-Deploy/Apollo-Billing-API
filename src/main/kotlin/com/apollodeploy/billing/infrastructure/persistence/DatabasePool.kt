@@ -19,7 +19,7 @@ class DatabasePool private constructor(
     companion object {
         fun create(): DatabasePool =
             create(
-                jdbcUrl = "jdbc:postgresql://${AppConfig.platformDbHost}:${AppConfig.platformDbPort}/${AppConfig.platformDbName}",
+                jdbcUrl = "jdbc:postgresql://${AppConfig.platformDbHost}:${AppConfig.platformDbPort}/${AppConfig.platformDbName}${sslQuery(AppConfig.platformDbEffectiveSslmode)}",
                 username = AppConfig.platformDbUser,
                 password = AppConfig.platformDbPassword,
                 maximumPoolSize = AppConfig.platformDbPoolMaxSize,
@@ -35,7 +35,7 @@ class DatabasePool private constructor(
          */
         fun createPlatformReader(): DatabasePool =
             create(
-                jdbcUrl = "jdbc:postgresql://${AppConfig.platformDbHost}:${AppConfig.platformDbPort}/${AppConfig.platformDbName}",
+                jdbcUrl = "jdbc:postgresql://${AppConfig.platformDbHost}:${AppConfig.platformDbPort}/${AppConfig.platformDbName}${sslQuery(AppConfig.platformDbEffectiveSslmode)}",
                 username = AppConfig.platformReaderDbUser,
                 password = AppConfig.platformReaderDbPassword,
                 maximumPoolSize = AppConfig.platformReaderDbPoolMaxSize,
@@ -54,7 +54,7 @@ class DatabasePool private constructor(
         fun createSignal(): DatabasePool? =
             try {
                 create(
-                    jdbcUrl = "jdbc:postgresql://${AppConfig.signalDbHost}:${AppConfig.signalDbPort}/${AppConfig.signalDbName}",
+                    jdbcUrl = "jdbc:postgresql://${AppConfig.signalDbHost}:${AppConfig.signalDbPort}/${AppConfig.signalDbName}${sslQuery(AppConfig.signalDbEffectiveSslmode)}",
                     username = AppConfig.signalDbUser,
                     password = AppConfig.signalDbPassword,
                     maximumPoolSize = AppConfig.signalDbPoolMaxSize,
@@ -68,6 +68,10 @@ class DatabasePool private constructor(
                     .warn("[billing] Signal DB unavailable — signal features disabled. Reason: {}", e.message)
                 null
             }
+
+        /** Builds the JDBC query string for SSL if sslmode is not "disable". */
+        private fun sslQuery(sslmode: String): String =
+            if (sslmode.isNotBlank() && sslmode != "disable") "?sslmode=$sslmode" else ""
 
         /**
          * Stub pool for manifest-only / SDK generation mode (TESSERACT_GENERATE=1).
