@@ -41,7 +41,7 @@ dependencies {
     implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")
 
     // OpenAPI / Scalar docs + Tesseract SDK generation
-    implementation("io.github.smiley4:ktor-openapi:5.7.0")
+    implementation("io.github.smiley4:ktor-openapi:5.2.0")
     implementation(kotlin("reflect"))
 
     // Ktor Client (for Polar API calls)
