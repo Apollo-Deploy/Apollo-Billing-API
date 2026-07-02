@@ -27,7 +27,7 @@ source scripts/install/_lib.sh
 source scripts/install/_db.sh
 
 if [[ ! -f .env ]]; then
-  log_error "No .env found — run ./install.sh first (or copy .env.example to .env)."
+  log_error "No .env found — run ./setup.sh --service billing from repo root (or copy .env.example to .env)."
   exit 1
 fi
 
