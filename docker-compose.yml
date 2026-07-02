@@ -1,97 +1,66 @@
-# Apollo Billing — Docker Compose
 # ─────────────────────────────────────────────────────────────────────────────
-# Billing does NOT own a Postgres, Redis, or nginx instance.
-# All three are provided by the platform (apollo-deploy) stack.
-# The billing service joins the platform's Docker network so it can reach
-# `postgres:5432`, `redis:6379`, and the platform nginx by their service
-# hostnames.
+# Apollo Billing (production-ready)
 #
-# Required env:
-#   PLATFORM_NETWORK   Name of the external Docker network created by the
-#                      platform stack.  Default: platform_default
+# Billing does NOT own a Postgres, Redis, or nginx instance. All three are
+# provided by the platform stack. The billing service joins the platform's
+# Docker network to reach them by service hostname.
 #
-# First-time setup:  ./install.sh
-# Start:             docker compose up -d
-# Local dev:         make run   (platform stack must already be up)
+# Start:   docker compose up -d
+# Build:   docker compose build
+# Logs:    docker compose logs -f billing
 # ─────────────────────────────────────────────────────────────────────────────
-
-# ── YAML anchors ─────────────────────────────────────────────────────────────
-
-x-restart-policy: &restart_policy
-  restart: unless-stopped
-
-x-healthcheck-defaults: &healthcheck_defaults
-  interval: 10s
-  timeout: 5s
-  retries: 5
-  start_period: 15s
-
-# Shared environment for the billing API.
-x-billing-env: &billing_env
-  APOLLO_BILLING_ENV: production
-  PLATFORM_DB_HOST: ${PLATFORM_DB_HOST:-postgres}
-  PLATFORM_DB_PORT: "5432"
-  PLATFORM_DB_NAME: ${PLATFORM_DB_NAME:-apollo_deploy_platform}
-  PLATFORM_DB_USER: ${PLATFORM_DB_USER:-billing_app}
-  PLATFORM_DB_PASSWORD: ${PLATFORM_DB_PASSWORD:?Set PLATFORM_DB_PASSWORD in .env}
-  BILLING_SUPERUSER_PASSWORD: ${BILLING_SUPERUSER_PASSWORD:?Set BILLING_SUPERUSER_PASSWORD in .env}
-  SIGNAL_DB_HOST: ${SIGNAL_DB_HOST:-postgres}
-  SIGNAL_DB_PORT: "5432"
-  SIGNAL_DB_NAME: ${SIGNAL_DB_NAME:-apollo_deploy_signal}
-  REDIS_HOST: ${REDIS_HOST:-redis}
-  REDIS_PORT: ${REDIS_PORT:-6379}
-  REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
-  POLAR_WEBHOOK_SECRET: ${POLAR_WEBHOOK_SECRET:?Set POLAR_WEBHOOK_SECRET in .env}
-  POLAR_API_KEY: ${POLAR_API_KEY:?Set POLAR_API_KEY in .env}
-  POLAR_API_BASE_URL: ${POLAR_API_BASE_URL:-https://api.polar.sh}
-  # ── Platform OAuth2 (outbound — audit log + /internal/* calls) ────────────
-  PLATFORM_URL: ${PLATFORM_URL:-https://api.platform.apollodeploy.local}
-  PLATFORM_CLIENT_ID: ${PLATFORM_CLIENT_ID:-}
-  PLATFORM_CLIENT_SECRET: ${PLATFORM_CLIENT_SECRET:-}
-  # ── IAM / OAuth M2M inbound (guards /internal/billing/*) ─────────────────
-  # JWKS must use the in-cluster hostname so billing can reach it inside Docker.
-  IAM_JWKS_URL: ${IAM_JWKS_URL:-http://platform:3000/auth/jwks}
-  IAM_ISSUER_URL: ${IAM_ISSUER_URL:-https://api.platform.apollodeploy.local}
-  AUTH_OAUTH_VALID_AUDIENCES: ${AUTH_OAUTH_VALID_AUDIENCES:-https://api.platform.apollodeploy.local}
-  IAM_SERVICE_CLIENT_IDS: ${IAM_SERVICE_CLIENT_IDS:-}
-  IAM_REQUEST_TIMEOUT_MS: ${IAM_REQUEST_TIMEOUT_MS:-5000}
-
-# ── Services ──────────────────────────────────────────────────────────────────
 
 services:
 
-  # ── API server ──────────────────────────────────────────────────────────────
   billing:
-    <<: *restart_policy
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        GRADLE_VERBOSE: ${GRADLE_VERBOSE:-0}
+        BUILD_VERSION: ${BUILD_VERSION:-1.0.0}
+        BUILD_REVISION: ${BUILD_REVISION:-unknown}
+        BUILD_DATE: ${BUILD_DATE:-unknown}
+    image: apollo-billing:${IMAGE_TAG:-latest}
+    container_name: apollo-billing
+    restart: unless-stopped
+    stop_grace_period: 30s
+    env_file:
+      - .env
+    environment:
+      BILLING_PORT: "3040"
     ports:
       - "3040:3040"
-    environment:
-      <<: *billing_env
-      BILLING_PORT: "3040"
     networks:
-      - platform           # billing → postgres, redis + platform nginx
+      - platform
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://localhost:3040/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 25s
+    read_only: true
+    tmpfs:
+      - /tmp:size=100M
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     deploy:
       resources:
         limits:
-          memory: 1g
           cpus: "1"
-    healthcheck:
-      <<: *healthcheck_defaults
-      test: ["CMD", "wget", "-qO", "/dev/null", "http://localhost:3040/health"]
-      start_period: 20s
-
-# ── Networks ──────────────────────────────────────────────────────────────────
+          memory: 1G
+          pids: 256
+        reservations:
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
 
 networks:
-  # External network created by the platform (apollo-deploy) stack.
-  # The billing API joins this network to reach postgres, redis, and nginx.
   platform:
     external: true
     name: ${PLATFORM_NETWORK:-platform_default}
-
-# ── Named volumes ─────────────────────────────────────────────────────────────
-
-volumes:
-  billing-nginx-cache:
-    external: true
