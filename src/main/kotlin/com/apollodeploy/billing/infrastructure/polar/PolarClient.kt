@@ -278,6 +278,7 @@ class PolarClient(
         billingAddress: PolarBillingAddressInput? = null,
         taxId: String? = null,
         defaultPaymentMethodId: String? = null,
+        externalMemberId: String? = null,
     ): PolarCallResult<JsonObject> {
         if (apiKey.isBlank()) {
             logger.warn("[billing:polar] POLAR_API_KEY is not configured — cannot update customer billing info org={}", orgId)
@@ -288,8 +289,17 @@ class PolarClient(
             billingName != null || billingAddress != null || taxId != null || defaultPaymentMethodId != null
         var latestCustomer: JsonObject? = null
 
+        // Email update goes through the admin API (no session needed).
+        // Do it first so a failure here aborts before touching portal fields,
+        // avoiding a partial-write where portal fields succeed but email fails.
+        if (email != null) {
+            val emailUpdate = updateCustomerByExternalId(orgId = orgId, email = email)
+            if (emailUpdate.value == null) return emailUpdate
+            latestCustomer = emailUpdate.value
+        }
+
         if (portalUpdateRequired) {
-            val sessionResult = createCustomerSession(orgId)
+            val sessionResult = createCustomerSession(orgId, externalMemberId = externalMemberId)
             val session =
                 sessionResult.value
                     ?: return PolarCallResult.failure(
@@ -309,16 +319,6 @@ class PolarClient(
             latestCustomer = portalUpdate.value
         }
 
-        if (email != null) {
-            val emailUpdate =
-                updateCustomerByExternalId(
-                    orgId = orgId,
-                    email = email,
-                )
-            if (emailUpdate.value == null) return emailUpdate
-            latestCustomer = emailUpdate.value
-        }
-
         return latestCustomer?.let { PolarCallResult.success(it, 200) }
             ?: PolarCallResult.failure(400, "No billing fields provided")
     }
@@ -327,13 +327,14 @@ class PolarClient(
         orgId: String,
         page: Int = 1,
         limit: Int = 10,
+        externalMemberId: String? = null,
     ): PolarCallResult<JsonObject> {
         if (apiKey.isBlank()) {
             logger.warn("[billing:polar] POLAR_API_KEY is not configured — cannot list payment methods org={}", orgId)
             return PolarCallResult.failure(null, "POLAR_API_KEY is not configured")
         }
 
-        val sessionResult = createCustomerSession(orgId)
+        val sessionResult = createCustomerSession(orgId, externalMemberId = externalMemberId)
         val session =
             sessionResult.value
                 ?: return PolarCallResult.failure(
@@ -363,13 +364,14 @@ class PolarClient(
     suspend fun deleteCustomerPaymentMethod(
         orgId: String,
         paymentMethodId: String,
+        externalMemberId: String? = null,
     ): PolarCallResult<Unit> {
         if (apiKey.isBlank()) {
             logger.warn("[billing:polar] POLAR_API_KEY is not configured — cannot delete payment method org={}", orgId)
             return PolarCallResult.failure(null, "POLAR_API_KEY is not configured")
         }
 
-        val sessionResult = createCustomerSession(orgId)
+        val sessionResult = createCustomerSession(orgId, externalMemberId = externalMemberId)
         val session =
             sessionResult.value
                 ?: return PolarCallResult.failure(
@@ -396,14 +398,82 @@ class PolarClient(
         }
     }
 
-    private suspend fun createCustomerSession(orgId: String): PolarCallResult<PolarCustomerSession> =
-        try {
+    /**
+     * Creates a new team customer in Polar for an organization.
+     *
+     * Uses `POST /v1/customers/` with `type: "team"`.
+     * The `external_id` is set to `orgId` so all subsequent calls
+     * can reference the customer by the Apollo org ID.
+     *
+     * An owner member is created automatically by Polar from `ownerEmail`/`ownerName`
+     * if not provided explicitly. Pass `ownerMemberId` to set the owner's external_id
+     * so portal sessions can be scoped back to them via `external_member_id`.
+     */
+    suspend fun createTeamCustomer(
+        orgId: String,
+        name: String,
+        ownerEmail: String,
+        ownerMemberId: String? = null,
+        ownerName: String? = null,
+        billingEmail: String? = null,
+    ): PolarCallResult<JsonObject> {
+        if (apiKey.isBlank()) {
+            logger.warn("[billing:polar] POLAR_API_KEY is not configured — cannot create customer org={}", orgId)
+            return PolarCallResult.failure(null, "POLAR_API_KEY is not configured")
+        }
+
+        val body = PolarCreateTeamCustomerRequest(
+            externalId = orgId,
+            name = name,
+            email = billingEmail,
+            owner = PolarMemberOwnerCreate(
+                email = ownerEmail,
+                name = ownerName,
+                externalId = ownerMemberId,
+            ),
+        )
+
+        return try {
+            withTimeout(timeoutMs) {
+                val response =
+                    httpClient.post("$baseUrl/v1/customers/") {
+                        contentType(ContentType.Application.Json)
+                        bearerAuth(apiKey)
+                        setBody(body)
+                    }
+                if (!response.status.isSuccess()) {
+                    return@withTimeout response.toPolarFailure("create team customer", orgId)
+                }
+                PolarCallResult.success(response.body<JsonObject>(), response.status.value)
+            }
+        } catch (e: Exception) {
+            logger.warn("[billing:polar] create team customer exception org={}: {}", orgId, e.message)
+            PolarCallResult.failure(null, e.message ?: "Polar request failed")
+        }
+    }
+
+    suspend fun createCustomerSession(
+        orgId: String,
+        returnUrl: String? = null,
+        externalMemberId: String? = null,
+    ): PolarCallResult<PolarCustomerSession> {
+        if (apiKey.isBlank()) {
+            logger.warn("[billing:polar] POLAR_API_KEY is not configured — cannot create customer session org={}", orgId)
+            return PolarCallResult.failure(null, "POLAR_API_KEY is not configured")
+        }
+        return try {
             withTimeout(timeoutMs) {
                 val response =
                     httpClient.post("$baseUrl/v1/customer-sessions/") {
                         contentType(ContentType.Application.Json)
                         bearerAuth(apiKey)
-                        setBody(PolarCreateCustomerSessionRequest(externalCustomerId = orgId))
+                        setBody(
+                            PolarCreateCustomerSessionRequest(
+                                externalCustomerId = orgId,
+                                returnUrl = returnUrl,
+                                externalMemberId = externalMemberId,
+                            ),
+                        )
                     }
                 if (!response.status.isSuccess()) {
                     return@withTimeout response.toPolarFailure("create customer session", orgId)
@@ -414,6 +484,7 @@ class PolarClient(
             logger.warn("[billing:polar] create customer session exception org={}: {}", orgId, e.message)
             PolarCallResult.failure(null, e.message ?: "Polar request failed")
         }
+    }
 
     private suspend fun updateCustomerByExternalId(
         orgId: String,
@@ -468,6 +539,124 @@ class PolarClient(
             logger.warn("[billing:polar] update customer portal profile exception: {}", e.message)
             PolarCallResult.failure(null, e.message ?: "Polar request failed")
         }
+
+    /**
+     * Triggers invoice generation for an order via the Customer Portal API.
+     *
+     * Uses `POST /v1/customer-portal/orders/{id}/invoice` with a short-lived
+     * customer session token scoped to the org. Once generated, the invoice
+     * is permanent and cannot be modified.
+     *
+     * Docs: https://polar.sh/docs/api-reference/customer-portal/orders/post-invoice
+     */
+    suspend fun generateOrderInvoice(
+        orgId: String,
+        orderId: String,
+        externalMemberId: String? = null,
+    ): PolarCallResult<Unit> {
+        if (apiKey.isBlank()) {
+            logger.warn("[billing:polar] POLAR_API_KEY is not configured — cannot generate invoice org={} order={}", orgId, orderId)
+            return PolarCallResult.failure(null, "POLAR_API_KEY is not configured")
+        }
+
+        val sessionResult = createCustomerSession(orgId, externalMemberId = externalMemberId)
+        val session =
+            sessionResult.value
+                ?: return PolarCallResult.failure(
+                    sessionResult.statusCode,
+                    sessionResult.errorBody ?: "Unable to create customer session",
+                )
+
+        return try {
+            withTimeout(timeoutMs) {
+                val response =
+                    httpClient.post("$baseUrl/v1/customer-portal/orders/${orderId.pathSegment()}/invoice") {
+                        bearerAuth(session.token)
+                    }
+                if (!response.status.isSuccess()) {
+                    return@withTimeout response.toPolarFailure("generate order invoice", orderId)
+                }
+                PolarCallResult.success(Unit, response.status.value)
+            }
+        } catch (e: Exception) {
+            logger.warn("[billing:polar] generate order invoice exception org={} order={}: {}", orgId, orderId, e.message)
+            PolarCallResult.failure(null, e.message ?: "Polar request failed")
+        }
+    }
+
+    /**
+     * Fetches a single order (invoice) from Polar by ID.
+     *
+     * Polar orders represent completed checkout transactions and serve as
+     * the invoice record for both subscription and one-time purchases.
+     */
+    suspend fun getOrder(orderId: String): PolarCallResult<JsonObject> {
+        if (apiKey.isBlank()) {
+            logger.warn("[billing:polar] POLAR_API_KEY is not configured — cannot get order id={}", orderId)
+            return PolarCallResult.failure(null, "POLAR_API_KEY is not configured")
+        }
+
+        return try {
+            withTimeout(timeoutMs) {
+                val response =
+                    httpClient.get("$baseUrl/v1/orders/${orderId.pathSegment()}") {
+                        bearerAuth(apiKey)
+                    }
+                if (!response.status.isSuccess()) {
+                    return@withTimeout response.toPolarFailure("get order", orderId)
+                }
+                PolarCallResult.success(response.body<JsonObject>(), response.status.value)
+            }
+        } catch (e: Exception) {
+            logger.warn("[billing:polar] get order exception id={}: {}", orderId, e.message)
+            PolarCallResult.failure(null, e.message ?: "Polar request failed")
+        }
+    }
+
+    /**
+     * Lists orders (invoices) for a customer from Polar.
+     *
+     * Uses the Customer Portal API (`GET /v1/customer-portal/orders/`) with a
+     * short-lived customer session token, so orders are scoped to the customer
+     * automatically without requiring a Polar-internal customer UUID.
+     */
+    suspend fun listOrders(
+        orgId: String,
+        page: Int = 1,
+        limit: Int = 20,
+        externalMemberId: String? = null,
+    ): PolarCallResult<JsonObject> {
+        if (apiKey.isBlank()) {
+            logger.warn("[billing:polar] POLAR_API_KEY is not configured — cannot list orders")
+            return PolarCallResult.failure(null, "POLAR_API_KEY is not configured")
+        }
+
+        val sessionResult = createCustomerSession(orgId, externalMemberId = externalMemberId)
+        val session =
+            sessionResult.value
+                ?: return PolarCallResult.failure(
+                    sessionResult.statusCode,
+                    sessionResult.errorBody ?: "Unable to create customer session",
+                )
+
+        return try {
+            withTimeout(timeoutMs) {
+                val response =
+                    httpClient.get("$baseUrl/v1/customer-portal/orders/") {
+                        bearerAuth(session.token)
+                        parameter("page", page)
+                        parameter("limit", limit)
+                    }
+                if (!response.status.isSuccess()) {
+                    return@withTimeout response.toPolarFailure("list orders", orgId)
+                }
+                PolarCallResult.success(response.body<JsonObject>(), response.status.value)
+            }
+        } catch (e: Exception) {
+            logger.warn("[billing:polar] list orders exception: {}", e.message)
+            PolarCallResult.failure(null, e.message ?: "Polar request failed")
+        }
+    }
 
     private suspend fun <T> io.ktor.client.statement.HttpResponse.toPolarFailure(
         operation: String,
@@ -536,6 +725,8 @@ data class PolarCheckoutSession(
 @Serializable
 private data class PolarCreateCustomerSessionRequest(
     @SerialName("external_customer_id") val externalCustomerId: String,
+    @SerialName("return_url") val returnUrl: String? = null,
+    @SerialName("external_member_id") val externalMemberId: String? = null,
 )
 
 @Serializable
@@ -568,6 +759,22 @@ private data class PolarCustomerPortalUpdateRequest(
     @SerialName("billing_address") val billingAddress: PolarBillingAddressInput? = null,
     @SerialName("tax_id") val taxId: String? = null,
     @SerialName("default_payment_method_id") val defaultPaymentMethodId: String? = null,
+)
+
+@Serializable
+private data class PolarCreateTeamCustomerRequest(
+    @SerialName("type") val type: String = "team",
+    @SerialName("external_id") val externalId: String,
+    @SerialName("name") val name: String,
+    @SerialName("email") val email: String? = null,
+    @SerialName("owner") val owner: PolarMemberOwnerCreate? = null,
+)
+
+@Serializable
+private data class PolarMemberOwnerCreate(
+    @SerialName("email") val email: String,
+    @SerialName("name") val name: String? = null,
+    @SerialName("external_id") val externalId: String? = null,
 )
 
 private fun String.pathSegment(): String = URLEncoder.encode(this, Charsets.UTF_8).replace("+", "%20")
