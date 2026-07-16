@@ -2,8 +2,8 @@
 # Apollo Billing (production-ready)
 #
 # Billing does NOT own a Postgres, Redis, or nginx instance. All three are
-# provided by the platform stack. The billing service joins the platform's
-# Docker network to reach them by service hostname.
+# provided by the platform stack. The billing service joins the shared
+# `apollo` network to reach them by container name.
 #
 # Start:   docker compose up -d
 # Build:   docker compose build
@@ -32,7 +32,9 @@ services:
     ports:
       - "3040:3040"
     networks:
-      - platform
+      apollo:
+        external: true
+        name: apollo
     healthcheck:
       test: ["CMD", "wget", "-qO", "/dev/null", "http://localhost:3040/health"]
       interval: 15s
@@ -61,6 +63,6 @@ services:
         max-file: "5"
 
 networks:
-  platform:
+  apollo:
     external: true
-    name: ${PLATFORM_NETWORK:-platform_default}
+    name: apollo

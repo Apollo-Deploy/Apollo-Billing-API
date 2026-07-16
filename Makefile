@@ -151,15 +151,15 @@ check: lint test
 
 ## sdk           — Generate TypeScript + Java SDKs
 sdk:
-	TESSERACT_TARGETS=typescript,java TESSERACT_PACKAGE_VERSION="$(SDK_VERSION)" scripts/generate-sdk.sh
+	TESSERACT_TARGETS=typescript,java TESSERACT_PACKAGE_VERSION="$(SDK_VERSION)" TESSERACT_COMMAND=@apollo-deploy/tesseract scripts/generate-sdk.sh
 
 ## sdk-ts        — Generate TypeScript SDK only
 sdk-ts:
-	TESSERACT_TARGETS=typescript TESSERACT_PACKAGE_VERSION="$(SDK_VERSION)" scripts/generate-sdk.sh
+	TESSERACT_TARGETS=typescript TESSERACT_PACKAGE_VERSION="$(SDK_VERSION)" TESSERACT_COMMAND=@apollo-deploy/tesseract scripts/generate-sdk.sh
 
 ## sdk-java      — Generate Java SDK only
 sdk-java:
-	TESSERACT_TARGETS=java TESSERACT_PACKAGE_VERSION="$(SDK_VERSION)" scripts/generate-sdk.sh
+	TESSERACT_TARGETS=java TESSERACT_PACKAGE_VERSION="$(SDK_VERSION)" TESSERACT_COMMAND=@apollo-deploy/tesseract scripts/generate-sdk.sh
 
 ## sdk-publish   — Publish TypeScript + Java SDKs (SDK_VERSION required)
 sdk-publish: require-sdk-version sdk-codeartifact
