@@ -8,6 +8,8 @@ import com.apollodeploy.billing.feature.docs.api.docsRoutes
 import com.apollodeploy.billing.feature.enforce.api.enforceRoutes
 import com.apollodeploy.billing.feature.entitlements.api.entitlementsRoutes
 import com.apollodeploy.billing.feature.health.api.healthRoutes
+import com.apollodeploy.billing.feature.invoices.api.invoicesRoutes
+import com.apollodeploy.billing.feature.subscriptions.api.subscriptionsRoutes
 import com.apollodeploy.billing.feature.usage.api.usageIngestRoutes
 import com.apollodeploy.billing.feature.webhook.api.polarWebhookRoutes
 import com.apollodeploy.billing.infrastructure.config.AppConfig
@@ -143,6 +145,8 @@ private fun Application.installCorePlugins() {
                             "checkout" -> listOf("Checkout")
                             "customer" -> listOf("Customer Billing")
                             "usage" -> listOf("Usage")
+                            "subscriptions" -> listOf("Subscriptions")
+                            "invoices" -> listOf("Invoices")
                             else -> listOf("Billing")
                         }
                     else -> listOf()
@@ -219,6 +223,8 @@ private fun Application.registerRoutes(assembly: AppAssembly) {
                 checkoutRoutes(assembly.checkoutController)
                 customerBillingRoutes(assembly.customerBillingController)
                 usageIngestRoutes(assembly.usageIngestController)
+                subscriptionsRoutes(assembly.subscriptionsController)
+                invoicesRoutes(assembly.invoicesController)
             }
         }
         rateLimit(RateLimitName("webhook")) {

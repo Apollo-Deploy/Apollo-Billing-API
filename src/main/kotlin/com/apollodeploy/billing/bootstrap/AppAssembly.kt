@@ -18,6 +18,12 @@ import com.apollodeploy.billing.feature.entitlements.application.EntitlementsSer
 import com.apollodeploy.billing.feature.entitlements.infrastructure.persistence.EntitlementsRepo
 import com.apollodeploy.billing.feature.health.api.HealthController
 import com.apollodeploy.billing.feature.health.application.HealthService
+import com.apollodeploy.billing.feature.invoices.api.InvoicesController
+import com.apollodeploy.billing.feature.invoices.application.InvoicesService
+import com.apollodeploy.billing.feature.invoices.infrastructure.persistence.InvoicesRepo
+import com.apollodeploy.billing.feature.subscriptions.api.SubscriptionsController
+import com.apollodeploy.billing.feature.subscriptions.application.SubscriptionsService
+import com.apollodeploy.billing.feature.subscriptions.infrastructure.persistence.SubscriptionsQueryRepo
 import com.apollodeploy.billing.feature.signal.application.SignalBillingConfig
 import com.apollodeploy.billing.feature.usage.api.UsageIngestController
 import com.apollodeploy.billing.feature.usage.application.UsageIngestService
@@ -62,6 +68,8 @@ class AppAssembly private constructor(
     val customerBillingController: CustomerBillingController,
     val usageIngestController: UsageIngestController,
     val polarWebhookController: PolarWebhookController,
+    val subscriptionsController: SubscriptionsController,
+    val invoicesController: InvoicesController,
     private val db: DatabasePool?,
     private val platformReaderDb: DatabasePool?,
     private val signalDb: DatabasePool?,
@@ -111,7 +119,7 @@ class AppAssembly private constructor(
                 }
             }
 
-            val controllers = buildControllers(appRegistry, polarClient, productCatalogRepo, polarWebhookHandler, auditLogClient, redis)
+            val controllers = buildControllers(appRegistry, polarClient, productCatalogRepo, polarWebhookHandler, auditLogClient, redis, db)
 
             logger.info("[billing] Assembly complete — registered apps: {}", appRegistry.knownApps())
 
@@ -128,6 +136,8 @@ class AppAssembly private constructor(
                 customerBillingController = controllers.customerBilling,
                 usageIngestController = controllers.usageIngest,
                 polarWebhookController = controllers.polarWebhook,
+                subscriptionsController = controllers.subscriptions,
+                invoicesController = controllers.invoices,
                 db = db,
                 platformReaderDb = platformReaderDb,
                 signalDb = signalDb,
@@ -175,7 +185,7 @@ class AppAssembly private constructor(
                 )
 
             val productCatalogRepo = ProductCatalogRepo(appRegistry, polarClient)
-            val controllers = buildControllers(appRegistry, polarClient, productCatalogRepo, polarWebhookHandler, auditLogClient)
+            val controllers = buildControllers(appRegistry, polarClient, productCatalogRepo, polarWebhookHandler, auditLogClient, db = stubDb)
 
             logger.info("[billing] Manifest assembly complete — registered apps: {}", appRegistry.knownApps())
 
@@ -200,6 +210,8 @@ class AppAssembly private constructor(
                 customerBillingController = controllers.customerBilling,
                 usageIngestController = controllers.usageIngest,
                 polarWebhookController = controllers.polarWebhook,
+                subscriptionsController = controllers.subscriptions,
+                invoicesController = controllers.invoices,
                 db = null,
                 platformReaderDb = null,
                 signalDb = null,
@@ -255,6 +267,8 @@ class AppAssembly private constructor(
             val customerBilling: CustomerBillingController,
             val usageIngest: UsageIngestController,
             val polarWebhook: PolarWebhookController,
+            val subscriptions: SubscriptionsController,
+            val invoices: InvoicesController,
         )
 
         private fun buildControllers(
@@ -264,6 +278,7 @@ class AppAssembly private constructor(
             polarWebhookHandler: PolarWebhookHandler,
             auditLogClient: AuditLogClient,
             redis: RedisPool? = null,
+            db: DatabasePool? = null,
         ): Controllers =
             Controllers(
                 health = HealthController(HealthService()),
@@ -274,6 +289,12 @@ class AppAssembly private constructor(
                 customerBilling = CustomerBillingController(CustomerBillingService(CustomerBillingRepo(polarClient), auditLogClient)),
                 usageIngest = UsageIngestController(UsageIngestService(UsageIngestRepo(polarClient, redis), auditLogClient)),
                 polarWebhook = PolarWebhookController(PolarWebhookService(PolarWebhookRepo(polarWebhookHandler), WebhookDeduplicator(redis))),
+                subscriptions = SubscriptionsController(
+                    SubscriptionsService(SubscriptionsQueryRepo(db ?: DatabasePool.createStub())),
+                ),
+                invoices = InvoicesController(
+                    InvoicesService(InvoicesRepo(polarClient, appRegistry)),
+                ),
             )
     }
 
