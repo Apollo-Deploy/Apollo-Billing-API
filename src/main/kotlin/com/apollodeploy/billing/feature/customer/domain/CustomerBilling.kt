@@ -66,6 +66,33 @@ data class ProvisionCustomerResponse(
     val type: String,
 )
 
+@Serializable
+data class SetDefaultPaymentMethodResponse(
+    val customer: JsonObject,
+)
+
+@Serializable
+data class CreateCustomerSessionRequest(
+    val orgId: String,
+    /** Optional. Scopes the session to a specific org member for portal activity attribution.
+     *  For flat org-level billing this can be omitted. */
+    val memberId: String? = null,
+    /** Optional. Polar will surface a back button pointing to this URL inside the Customer Portal. */
+    val returnUrl: String? = null,
+)
+
+@Serializable
+data class CreateCustomerSessionResponse(
+    /** Short-lived bearer token for Customer Portal API calls. */
+    val sessionToken: String,
+    /** Pre-built portal URL that can be used to redirect the user directly into the portal. */
+    val customerPortalUrl: String,
+    /** ISO-8601 timestamp when the session expires (typically 30 minutes). */
+    val expiresAt: String,
+    /** Polar-internal customer session ID. */
+    val sessionId: String,
+)
+
 sealed class CustomerBillingResult<out T> {
     data class Success<T>(
         val value: T,

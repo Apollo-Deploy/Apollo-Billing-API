@@ -64,4 +64,13 @@ class CustomerBillingRepo(
             ownerName = ownerName,
             billingEmail = billingEmail,
         )
+
+    suspend fun setDefaultPaymentMethod(
+        orgId: String,
+        paymentMethodId: String,
+    ): PolarCallResult<JsonObject> =
+        polarClient.updateCustomerBillingInfo(
+            orgId = orgId,
+            defaultPaymentMethodId = paymentMethodId,
+        )
 }

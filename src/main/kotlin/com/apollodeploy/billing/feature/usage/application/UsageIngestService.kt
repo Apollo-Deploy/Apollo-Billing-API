@@ -1,5 +1,6 @@
 package com.apollodeploy.billing.feature.usage.application
 
+import com.apollodeploy.billing.feature.signal.domain.SIGNAL_EMAIL_RECEIVED_EVENT_KEY
 import com.apollodeploy.billing.feature.usage.domain.UsageIngestRequest
 import com.apollodeploy.billing.feature.usage.domain.UsageIngestResponse
 import com.apollodeploy.billing.feature.usage.infrastructure.persistence.UsageIngestRepo
@@ -10,6 +11,7 @@ import com.apollodeploy.billing.infrastructure.audit.AuditStatus
 class UsageIngestService(
     private val usageIngestRepo: UsageIngestRepo,
     private val auditLogClient: AuditLogClient,
+    private val inboundUsageEntitlement: InboundUsageEntitlementPort = InboundUsageEntitlementPort { true },
 ) {
     companion object {
         /** Maximum quantity per single usage event. Prevents abuse via extreme values. */
@@ -30,13 +32,19 @@ class UsageIngestService(
         if (req.eventKey.isBlank()) {
             return UsageIngestResponse(accepted = false, reason = "eventKey is required")
         }
+        val inboundReceivingAllowed =
+            req.eventKey != SIGNAL_EMAIL_RECEIVED_EVENT_KEY ||
+                inboundUsageEntitlement.isInboundReceivingAllowed(req.orgId)
+        if (!inboundReceivingAllowed) {
+            return UsageIngestResponse(accepted = false, reason = "inbound_receiving_not_entitled")
+        }
 
         val accepted =
             usageIngestRepo.ingestUsageEvent(
                 orgId = req.orgId,
                 eventKey = req.eventKey,
                 quantity = req.quantity,
-                idempotencyKey = req.idempotencyKey,
+                idempotencyKey = req.idempotencyKey ?: req.metadata["messageId"]?.toString()?.trim('"'),
                 metadata = req.metadata,
             )
 

@@ -43,49 +43,44 @@ Built with **Kotlin**, **Ktor**, **Netty**, and **PostgreSQL** (via HikariCP). R
 ### Prerequisites
 
 - Docker 24+ (BuildKit enabled)
-- Platform stack running (`postgres`, `redis` healthy)
-- Java 21 (local development only)
+- Terraform >= 1.6
+- Java 21 (local development only, outside Docker)
 
-### 1. Clone and configure
+### Start the full local stack
 
-```bash
-git clone git@github.com:Apollo-Deploy/apollo-billing-api.git
-cd apollo-billing-api
-cp .env.example .env
-```
-
-Fill in the required values in `.env`:
-
-| Variable | Source |
-|----------|--------|
-| `PLATFORM_DB_PASSWORD` | Platform installer → `BILLING_APP_DB_PASS` |
-| `BILLING_SUPERUSER_PASSWORD` | Platform installer → `BILLING_SUPERUSER_DB_PASS` |
-| `REDIS_PASSWORD` | Platform installer → `REDIS_PASSWORD` |
-| `POLAR_API_KEY` | Polar dashboard |
-| `POLAR_WEBHOOK_SECRET` | Polar webhook settings |
-| `PLATFORM_CLIENT_ID` | `bun run oauth:register-clients` on platform |
-| `PLATFORM_CLIENT_SECRET` | Same as above |
-| `IAM_SERVICE_CLIENT_IDS` | OAuth client IDs of services calling billing |
-
-### 2. First-time setup
+The billing service is part of the shared Terraform-managed local environment.
+From the repo root:
 
 ```bash
-./init.sh
+export NPM_TOKEN=npm_...             # required for platform build
+export CODEARTIFACT_AUTH_TOKEN=...   # required if enable_signal=true
+
+cd infra/terraform/environments/local
+terraform init        # first time only
+terraform apply -auto-approve
 ```
 
-This creates `.env` from the example (if missing) and runs database migrations.
+This builds images, starts infra (Postgres, PgBouncer, Redis), runs migrations,
+registers OAuth clients, and starts Platform, Billing, and Signal automatically.
 
-### 3. Start the service
-
-```bash
-docker compose up -d
-```
-
-Verify it's running:
+Verify billing is running:
 
 ```bash
 curl http://localhost:3040/health
 ```
+
+### Configuration
+
+Optional credentials (Polar, AWS, etc.) go in `terraform.tfvars`:
+
+```bash
+cd infra/terraform/environments/local
+cp terraform.tfvars.example terraform.tfvars
+# edit terraform.tfvars, then re-apply
+terraform apply -auto-approve
+```
+
+See `terraform.tfvars.example` for all available options.
 
 ---
 
@@ -125,13 +120,20 @@ make lint-fix     # auto-fix
 make check        # lint + test
 ```
 
-### Docker commands
+### Terraform / container commands
 
 ```bash
-make up           # build & start
-make down         # stop
-make ps           # container status
-make logs         # tail logs
+cd infra/terraform/environments/local
+make tf-up      # apply (build + start)
+make tf-down    # destroy all containers
+make tf-logs    # tail billing logs
+```
+
+Or directly:
+
+```bash
+docker logs -f apollo-billing
+docker restart apollo-billing
 ```
 
 ### Database
@@ -153,7 +155,7 @@ Key groups:
 - **Signal DB** — `SIGNAL_DB_HOST`, `SIGNAL_DB_PORT`, `SIGNAL_DB_NAME`, `SIGNAL_DB_SSLMODE`
 - **Redis** — `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`
 - **Polar** — `POLAR_API_KEY`, `POLAR_WEBHOOK_SECRET`, `POLAR_API_BASE_URL`
-- **OAuth/IAM** — `PLATFORM_URL`, `PLATFORM_CLIENT_ID`, `PLATFORM_CLIENT_SECRET`, `IAM_JWKS_URL`, `IAM_SERVICE_CLIENT_IDS`
+- **OAuth/IAM** — `PLATFORM_URL`, `PLATFORM_CLIENT_ID`, `PLATFORM_CLIENT_SECRET`, `AUTH_JWKS_URL`, `OAUTH_SERVICE_CLIENT_IDS`
 - **SSL** — `PLATFORM_DB_SSLMODE`, `SIGNAL_DB_SSLMODE`, `DB_PROVIDER` (supports `postgres`, `planetscale`)
 
 ---
@@ -258,14 +260,14 @@ See the Billing-Plan-Setup README for detailed instructions on catalog creation 
    cd apps/platform && bun run oauth:register-clients
    ```
 
-2. Add the returned `client_id` to billing's `IAM_SERVICE_CLIENT_IDS`
+2. Add the returned `client_id` to billing's `OAUTH_SERVICE_CLIENT_IDS`
 
 3. Configure the calling app's environment:
    ```bash
    PLATFORM_CLIENT_ID=<client_id>
    PLATFORM_CLIENT_SECRET=<client_secret>
-   PLATFORM_BASE_URL=http://platform:3000
-   PLATFORM_AUDIENCE_URL=https://api.platform.apollodeploy.local
+   PLATFORM_URL=http://platform:3000
+   PLATFORM_AUDIENCE_URL=https://api.platform.apollodeploy.com
    BILLING_BASE_URL=https://billing.apollodeploy.com
    ```
 
@@ -308,7 +310,7 @@ Create a billing client with automatic token refresh:
 ```kotlin
 val m2mClient = OAuthM2mClient(
     httpClient = httpClient,
-    platformUrl = System.getenv("PLATFORM_BASE_URL"),
+    platformUrl = System.getenv("PLATFORM_URL"),
     clientId = System.getenv("PLATFORM_CLIENT_ID"),
     clientSecret = System.getenv("PLATFORM_CLIENT_SECRET"),
     audienceUrl = System.getenv("PLATFORM_AUDIENCE_URL"),
@@ -376,7 +378,7 @@ val entitlements = billingProvider.get().billingEntitlements.getBillingEntitleme
 - [ ] App config values added to `AppConfig.kt` and `application.conf`
 - [ ] App registered in `AppAssembly.kt`
 - [ ] `platform_apps` row seeded
-- [ ] OAuth client registered, `client_id` added to `IAM_SERVICE_CLIENT_IDS`
+- [ ] OAuth client registered, `client_id` added to `OAUTH_SERVICE_CLIENT_IDS`
 - [ ] Polar products, meters, and webhooks configured via [Billing-Plan-Setup](https://github.com/Apollo-Deploy/Billing-Plan-Setup)
 - [ ] SDK installed in app backend
 - [ ] Enforcement calls added to write paths

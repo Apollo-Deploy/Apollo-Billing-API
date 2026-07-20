@@ -1,6 +1,7 @@
 package com.apollodeploy.billing.feature.customer.api
 
 import com.apollodeploy.billing.feature.customer.application.CustomerBillingService
+import com.apollodeploy.billing.feature.customer.domain.CreateCustomerSessionRequest
 import com.apollodeploy.billing.feature.customer.domain.CustomerBillingResult
 import com.apollodeploy.billing.feature.customer.domain.OpenBillingPortalRequest
 import com.apollodeploy.billing.feature.customer.domain.ProvisionCustomerRequest
@@ -54,6 +55,12 @@ class CustomerBillingController(
         call.respondCustomerResult(customerBillingService.openBillingPortal(req))
     }
 
+    suspend fun setDefaultPaymentMethod(call: ApplicationCall) {
+        val orgId = call.request.queryParameters["orgId"]
+        val paymentMethodId = call.parameters["paymentMethodId"]
+        call.respondCustomerResult(customerBillingService.setDefaultPaymentMethod(orgId, paymentMethodId))
+    }
+
     suspend fun provisionCustomer(call: ApplicationCall) {
         val req = call.receive<ProvisionCustomerRequest>()
         when (val result = customerBillingService.provisionCustomer(req)) {
@@ -65,6 +72,11 @@ class CustomerBillingController(
                 )
             is CustomerBillingResult.PolarFailure -> call.respondPolarFailure(result)
         }
+    }
+
+    suspend fun createCustomerSession(call: ApplicationCall) {
+        val req = call.receive<CreateCustomerSessionRequest>()
+        call.respondCustomerResult(customerBillingService.createCustomerSession(req))
     }
 }
 

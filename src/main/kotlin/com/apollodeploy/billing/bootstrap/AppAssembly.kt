@@ -27,6 +27,7 @@ import com.apollodeploy.billing.feature.subscriptions.infrastructure.persistence
 import com.apollodeploy.billing.feature.signal.application.SignalBillingConfig
 import com.apollodeploy.billing.feature.usage.api.UsageIngestController
 import com.apollodeploy.billing.feature.usage.application.UsageIngestService
+import com.apollodeploy.billing.feature.usage.application.InboundUsageEntitlementPort
 import com.apollodeploy.billing.feature.usage.infrastructure.persistence.UsageIngestRepo
 import com.apollodeploy.billing.feature.webhook.api.PolarWebhookController
 import com.apollodeploy.billing.feature.webhook.application.PolarWebhookService
@@ -287,7 +288,18 @@ class AppAssembly private constructor(
                 entitlements = EntitlementsController(EntitlementsService(EntitlementsRepo(appRegistry))),
                 checkout = CheckoutController(CheckoutService(CheckoutRepo(appRegistry, polarClient), auditLogClient)),
                 customerBilling = CustomerBillingController(CustomerBillingService(CustomerBillingRepo(polarClient), auditLogClient)),
-                usageIngest = UsageIngestController(UsageIngestService(UsageIngestRepo(polarClient, redis), auditLogClient)),
+                usageIngest = UsageIngestController(
+                    UsageIngestService(
+                        UsageIngestRepo(polarClient, redis),
+                        auditLogClient,
+                        InboundUsageEntitlementPort { orgId ->
+                            appRegistry.get("signal")
+                                ?.enforceFeature(orgId, "inboundReceiving")
+                                ?.fold({ false }, { true })
+                                ?: false
+                        },
+                    ),
+                ),
                 polarWebhook = PolarWebhookController(PolarWebhookService(PolarWebhookRepo(polarWebhookHandler), WebhookDeduplicator(redis))),
                 subscriptions = SubscriptionsController(
                     SubscriptionsService(SubscriptionsQueryRepo(db ?: DatabasePool.createStub())),

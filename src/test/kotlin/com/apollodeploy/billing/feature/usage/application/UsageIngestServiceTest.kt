@@ -74,4 +74,51 @@ class UsageIngestServiceTest {
                 )
             }
         }
+
+    @Test
+    fun `inbound usage is rejected before persistence when inbound receiving is not entitled`() = runBlocking {
+        val deniedService = UsageIngestService(
+            repo,
+            auditLogClient,
+            InboundUsageEntitlementPort { false },
+        )
+
+        val result = deniedService.ingest(
+            UsageIngestRequest(orgId = "org_1", eventKey = "signal.email.received", quantity = 1),
+        )
+
+        assertEquals(false, result.accepted)
+        assertEquals("inbound_receiving_not_entitled", result.reason)
+        coVerify(exactly = 0) { repo.ingestUsageEvent(any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `entitled inbound usage uses the message id as its idempotency key`() = runBlocking {
+        val inboundService = UsageIngestService(
+            repo,
+            auditLogClient,
+            InboundUsageEntitlementPort { true },
+        )
+        coEvery { repo.ingestUsageEvent(any(), any(), any(), any(), any()) } returns true
+
+        val result = inboundService.ingest(
+            UsageIngestRequest(
+                orgId = "org_1",
+                eventKey = "signal.email.received",
+                quantity = 1,
+                metadata = mapOf("messageId" to JsonPrimitive("inmsg_1")),
+            ),
+        )
+
+        assertEquals(true, result.accepted)
+        coVerify {
+            repo.ingestUsageEvent(
+                "org_1",
+                "signal.email.received",
+                1,
+                "inmsg_1",
+                any(),
+            )
+        }
+    }
 }

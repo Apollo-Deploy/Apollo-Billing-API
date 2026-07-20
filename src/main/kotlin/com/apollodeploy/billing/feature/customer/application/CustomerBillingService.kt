@@ -1,11 +1,14 @@
 package com.apollodeploy.billing.feature.customer.application
 
+import com.apollodeploy.billing.feature.customer.domain.CreateCustomerSessionRequest
+import com.apollodeploy.billing.feature.customer.domain.CreateCustomerSessionResponse
 import com.apollodeploy.billing.feature.customer.domain.CustomerBillingResult
 import com.apollodeploy.billing.feature.customer.domain.ListCustomerPaymentMethodsResponse
 import com.apollodeploy.billing.feature.customer.domain.OpenBillingPortalRequest
 import com.apollodeploy.billing.feature.customer.domain.OpenBillingPortalResponse
 import com.apollodeploy.billing.feature.customer.domain.ProvisionCustomerRequest
 import com.apollodeploy.billing.feature.customer.domain.ProvisionCustomerResponse
+import com.apollodeploy.billing.feature.customer.domain.SetDefaultPaymentMethodResponse
 import com.apollodeploy.billing.feature.customer.domain.UpdateCustomerBillingInfoRequest
 import com.apollodeploy.billing.feature.customer.domain.UpdateCustomerBillingInfoResponse
 import com.apollodeploy.billing.feature.customer.domain.hasAnyUpdate
@@ -14,6 +17,7 @@ import com.apollodeploy.billing.infrastructure.audit.AuditEvent
 import com.apollodeploy.billing.infrastructure.audit.AuditLogClient
 import com.apollodeploy.billing.infrastructure.audit.AuditRiskLevel
 import com.apollodeploy.billing.infrastructure.audit.AuditStatus
+import com.apollodeploy.billing.infrastructure.validation.UrlValidator
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -148,6 +152,11 @@ class CustomerBillingService(
             return CustomerBillingResult.InvalidRequest("orgId is required")
         }
 
+        val returnUrlError = UrlValidator.validateRedirectUrl(req.returnUrl)
+        if (returnUrlError != null) {
+            return CustomerBillingResult.InvalidRequest("Invalid returnUrl: $returnUrlError")
+        }
+
         val result = customerBillingRepo.createCustomerPortalSession(req.orgId, req.returnUrl, req.memberId)
         return if (result.value != null) {
             auditLogClient.log(
@@ -231,6 +240,106 @@ class CustomerBillingService(
             )
             CustomerBillingResult.PolarFailure(
                 fallbackCode = "billing.customer_provision_failed",
+                statusCode = result.statusCode,
+                errorBody = result.errorBody,
+            )
+        }
+    }
+
+    suspend fun setDefaultPaymentMethod(
+        orgId: String?,
+        paymentMethodId: String?,
+    ): CustomerBillingResult<SetDefaultPaymentMethodResponse> {
+        if (orgId.isNullOrBlank()) return CustomerBillingResult.InvalidRequest("orgId is required")
+        if (paymentMethodId.isNullOrBlank()) return CustomerBillingResult.InvalidRequest("paymentMethodId is required")
+
+        val result = customerBillingRepo.setDefaultPaymentMethod(orgId, paymentMethodId)
+        return if (result.value != null) {
+            auditLogClient.log(
+                AuditEvent(
+                    module = "customer",
+                    action = "default_payment_method_set",
+                    resourceType = "payment_method",
+                    resourceId = paymentMethodId,
+                    organizationId = orgId,
+                    status = AuditStatus.SUCCESS,
+                    riskLevel = AuditRiskLevel.MEDIUM,
+                ),
+            )
+            CustomerBillingResult.Success(SetDefaultPaymentMethodResponse(result.value))
+        } else {
+            auditLogClient.log(
+                AuditEvent(
+                    module = "customer",
+                    action = "default_payment_method_set",
+                    resourceType = "payment_method",
+                    resourceId = paymentMethodId,
+                    organizationId = orgId,
+                    status = AuditStatus.FAILURE,
+                    errorMessage = result.errorBody ?: "Setting default payment method failed",
+                    riskLevel = AuditRiskLevel.MEDIUM,
+                ),
+            )
+            CustomerBillingResult.PolarFailure(
+                fallbackCode = "billing.default_payment_method_failed",
+                statusCode = result.statusCode,
+                errorBody = result.errorBody,
+            )
+        }
+    }
+
+    /**
+     * Creates a raw Polar customer session and returns the token + portal URL.
+     *
+     * Use this when the caller needs to make Customer Portal API requests directly
+     * (e.g. list subscriptions, manage payment methods) without redirecting the user
+     * to the portal UI. The session token is short-lived (~30 min) and scoped to the
+     * org's Polar customer. Pass [memberId] to attribute portal activity to a specific user.
+     *
+     * For opening the portal UI with a redirect URL, use [openBillingPortal] instead.
+     */
+    suspend fun createCustomerSession(req: CreateCustomerSessionRequest): CustomerBillingResult<CreateCustomerSessionResponse> {
+        if (req.orgId.isBlank()) {
+            return CustomerBillingResult.InvalidRequest("orgId is required")
+        }
+
+        val returnUrlError = UrlValidator.validateRedirectUrl(req.returnUrl)
+        if (returnUrlError != null) {
+            return CustomerBillingResult.InvalidRequest("Invalid returnUrl: $returnUrlError")
+        }
+
+        val result = customerBillingRepo.createCustomerPortalSession(req.orgId, req.returnUrl, req.memberId)
+        return if (result.value != null) {
+            auditLogClient.log(
+                AuditEvent(
+                    module = "customer",
+                    action = "customer_session_created",
+                    resourceType = "customer",
+                    organizationId = req.orgId,
+                    status = AuditStatus.SUCCESS,
+                ),
+            )
+            CustomerBillingResult.Success(
+                CreateCustomerSessionResponse(
+                    sessionToken = result.value.token,
+                    customerPortalUrl = result.value.customerPortalUrl,
+                    expiresAt = result.value.expiresAt,
+                    sessionId = result.value.id,
+                ),
+            )
+        } else {
+            auditLogClient.log(
+                AuditEvent(
+                    module = "customer",
+                    action = "customer_session_created",
+                    resourceType = "customer",
+                    organizationId = req.orgId,
+                    status = AuditStatus.FAILURE,
+                    errorMessage = result.errorBody ?: "Customer session creation failed",
+                ),
+            )
+            CustomerBillingResult.PolarFailure(
+                fallbackCode = "billing.customer_session_failed",
                 statusCode = result.statusCode,
                 errorBody = result.errorBody,
             )

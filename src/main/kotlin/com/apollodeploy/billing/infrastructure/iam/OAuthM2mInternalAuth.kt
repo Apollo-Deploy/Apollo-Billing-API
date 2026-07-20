@@ -8,10 +8,10 @@
  *   1. Extract `Authorization: Bearer <token>` from the request.
  *   2. Fetch the platform's public JWKS from `{platformUrl}/auth/jwks`.
  *   3. Verify the EdDSA-signed JWT:
- *        - issuer matches `IAM_ISSUER_URL` (or `PLATFORM_URL`)
+ *        - issuer matches `AUTH_OAUTH_ISSUER_URL` (or `PLATFORM_URL`)
  *        - audience matches `AUTH_OAUTH_VALID_AUDIENCES` (or `PLATFORM_URL`)
  *   4. Check that the token's `azp` / `sub` (client_id) is in the
- *      `IAM_SERVICE_CLIENT_IDS` allowlist (comma-separated env var).
+ *      `OAUTH_SERVICE_CLIENT_IDS` allowlist (comma-separated env var).
  *      Fails closed when the allowlist is empty — no service may call
  *      `/internal/` endpoints unless explicitly listed.
  *
@@ -319,10 +319,10 @@ fun io.ktor.server.application.ApplicationCall.authenticatedClientId(): String? 
  * without a valid `client_credentials` bearer token are rejected with 401.
  *
  * Reads configuration from [AppConfig]:
- *   - `platformUrl`       → JWKS base URL  (`{platformUrl}/auth/jwks`)
- *   - `iamIssuerUrl`      → expected `iss` claim
- *   - `iamValidAudiences` → expected `aud` claim(s)
- *   - `iamServiceClientIds` → allowlisted `azp`/`sub` values
+ *   - `platformUrl`         → JWKS base URL  (`{platformUrl}/auth/jwks`)
+ *   - `iamIssuerUrl`        → expected `iss` claim  (AUTH_OAUTH_ISSUER_URL)
+ *   - `iamValidAudiences`   → expected `aud` claim(s)  (AUTH_OAUTH_VALID_AUDIENCES)
+ *   - `iamServiceClientIds` → allowlisted `azp`/`sub` values  (OAUTH_SERVICE_CLIENT_IDS)
  */
 fun Route.oauthInternalRoutes(
     httpClient: HttpClient,
@@ -335,9 +335,9 @@ fun Route.oauthInternalRoutes(
 
     if (allowedServiceClientIds.isEmpty()) {
         logger.warn(
-            "[billing:oauth] IAM_SERVICE_CLIENT_IDS is empty -- " +
+            "[billing:oauth] OAUTH_SERVICE_CLIENT_IDS is empty -- " +
                 "ALL /internal/ calls will be rejected. " +
-                "Set IAM_SERVICE_CLIENT_IDS to the client_id(s) of allowed callers.",
+                "Set OAUTH_SERVICE_CLIENT_IDS to the client_id(s) of allowed callers.",
         )
     }
 

@@ -87,29 +87,24 @@ test-unit:
 test-watch:
 	./gradlew test --continuous
 
-# ── Docker ────────────────────────────────────────────────────────────────────
+# ── Terraform (local dev) ─────────────────────────────────────────────────────
+#
+# The full local stack (infra + platform + billing + signal) is managed by
+# Terraform. Run these from infra/terraform/environments/local/.
 
-.PHONY: install up down ps logs
+.PHONY: tf-up tf-down tf-logs
 
-## install       — First-time setup (secrets + migrations)
-install:
-	./init.sh
+## tf-up         — Apply Terraform to start/update the local stack
+tf-up:
+	@cd ../../infra/terraform/environments/local && terraform apply -auto-approve
 
-## up            — Build & start billing
-up:
-	docker compose up -d --build
+## tf-down       — Destroy the local Terraform stack
+tf-down:
+	@cd ../../infra/terraform/environments/local && terraform destroy -auto-approve
 
-## down          — Stop billing
-down:
-	docker compose down
-
-## ps            — Show running containers
-ps:
-	docker compose ps
-
-## logs          — Tail container logs
-logs:
-	docker compose logs -f
+## tf-logs       — Tail billing container logs
+tf-logs:
+	docker logs -f apollo-billing
 
 # ── Database ──────────────────────────────────────────────────────────────────
 

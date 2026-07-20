@@ -28,6 +28,7 @@ import com.apollodeploy.billing.feature.signal.domain.signalGetFreePlan
 import com.apollodeploy.billing.feature.signal.domain.signalPlans
 import com.apollodeploy.billing.feature.signal.domain.signalSmsPlans
 import com.apollodeploy.billing.feature.signal.domain.toFeatureMap
+import com.apollodeploy.billing.infrastructure.config.AppConfig
 import com.apollodeploy.billing.infrastructure.persistence.DatabasePool
 import com.apollodeploy.billing.infrastructure.persistence.SubscriptionRepo
 import com.apollodeploy.billing.infrastructure.persistence.prepareAndQuery
@@ -339,6 +340,9 @@ class SignalBillingConfig(
             dbUsage +
                 buildMap {
                     meterBalance(SIGNAL_EMAIL_METER_ID)?.let { put("monthlySends", it) }
+                    meterBalance(AppConfig.signalEmailReceivedMeterId)?.let {
+                        put("inboundReceivedBalance", it)
+                    }
                     meterBalance(SIGNAL_AUTOMATION_RUN_METER_ID)?.let { put("automationRunBalance", it) }
                     meterBalance(SIGNAL_AI_CREDIT_METER_ID)?.let { put("aiCreditBalance", it) }
                     meterBalance(SIGNAL_SMS_SEGMENT_METER_ID)?.let { put("smsSegmentBalance", it) }
@@ -444,5 +448,6 @@ fun PlanEntitlements.toPlanFeatureConfig() =
                 "sendTimeOptimisation" to sendTimeOptimisation,
                 "dedicatedIps" to dedicatedIps,
                 "multiRegion" to multiRegion,
+                "inboundReceiving" to inboundReceiving,
             ),
     )

@@ -8,6 +8,9 @@ object AppConfig {
 
     val environment: String = config.getString("apollo-billing.environment")
     val billingPort: Int = config.getInt("apollo-billing.port")
+    val requestBodyLimitBytes: Long = config.getLong("apollo-billing.request-body-limit-bytes")
+    val metricsEnabled: Boolean = config.getBoolean("apollo-billing.metrics-enabled")
+    val corsOrigins: String = config.getString("apollo-billing.cors-origins")
 
     // Polar
     val polarWebhookSecret: String = config.getString("apollo-billing.polar.webhook-secret")
@@ -60,7 +63,7 @@ object AppConfig {
     /** JWKS URL for token verification. Defaults to {platformUrl}/auth/jwks. */
     val iamJwksUrl: String =
         config
-            .getString("apollo-billing.iam.jwks-url")
+            .getString("apollo-billing.iam.auth-jwks-url")
             .ifBlank { if (platformUrl.isNotBlank()) "${platformUrl.trimEnd('/')}/auth/jwks" else "" }
 
     /** Expected iss claim in incoming tokens. Defaults to platformUrl. */
@@ -111,8 +114,12 @@ object AppConfig {
     val signalDbConnectionTimeoutMs: Long = config.getLong("apollo-billing.signal-db.connection-timeout-ms")
     val signalDbStatementTimeoutMs: Long = config.getLong("apollo-billing.signal-db.statement-timeout-ms")
 
+    // Signal usage meters provisioned in Polar. Blank means the balance is not exposed.
+    val signalEmailReceivedMeterId: String = config.getString("apollo-billing.signal.email-received-meter-id")
+
     // Redis
     val redisHost: String = config.getString("apollo-billing.redis.host")
     val redisPort: Int = config.getInt("apollo-billing.redis.port")
     val redisPassword: String = config.getString("apollo-billing.redis.password")
+    val redisDb: Int = config.getInt("apollo-billing.redis.db")
 }

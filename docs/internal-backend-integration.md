@@ -159,7 +159,7 @@ against the platform's public JWKS — no shared secret required.
 
 1. The calling service requests a `client_credentials` token from the platform:
    ```
-   POST {PLATFORM_BASE_URL}/auth/oauth2/token
+   POST {PLATFORM_URL}/auth/oauth2/token
    Content-Type: application/x-www-form-urlencoded
 
    grant_type=client_credentials
@@ -182,12 +182,12 @@ against the platform's public JWKS — no shared secret required.
    GET /internal/billing/entitlements/signal/org_123
    ```
 
-4. Billing fetches the platform's JWKS (`IAM_JWKS_URL`) once and caches it for
+4. Billing fetches the platform's JWKS (`AUTH_JWKS_URL`) once and caches it for
    300 seconds, verifying:
    - EdDSA signature against the public key
-   - `iss` matches `IAM_ISSUER_URL`
+   - `iss` matches `AUTH_OAUTH_ISSUER_URL`
    - `aud` matches `AUTH_OAUTH_VALID_AUDIENCES`
-   - `azp`/`sub` (client_id) is in `IAM_SERVICE_CLIENT_IDS`
+   - `azp`/`sub` (client_id) is in `OAUTH_SERVICE_CLIENT_IDS`
    - `exp` has not passed
 
 ### Registering a new calling service
@@ -204,7 +204,7 @@ against the platform's public JWKS — no shared secret required.
    ```bash
    PLATFORM_CLIENT_ID=<client_id>
    PLATFORM_CLIENT_SECRET=<client_secret>
-   PLATFORM_BASE_URL=http://platform:3000       # in-cluster token endpoint
+   PLATFORM_URL=http://platform:3000            # in-cluster token endpoint
    PLATFORM_AUDIENCE_URL=https://api.platform.apollodeploy.local  # JWT audience
    BILLING_BASE_URL=https://billing.apollodeploy.com
    ```
@@ -212,7 +212,7 @@ against the platform's public JWKS — no shared secret required.
 3. Add the `client_id` to the platform's `OAUTH_SERVICE_CLIENT_IDS` and
    `OAUTH_TRUSTED_CLIENT_IDS`, then restart the platform.
 
-4. Add the `client_id` to billing's `IAM_SERVICE_CLIENT_IDS`, then restart
+4. Add the `client_id` to billing's `OAUTH_SERVICE_CLIENT_IDS`, then restart
    billing.
 
 ### SDK client setup (Kotlin — apollo-signal-api pattern)
@@ -224,7 +224,7 @@ The Kotlin SDK client is rebuilt whenever the cached OAuth token rotates (the
 // OAuthM2mClient fetches and caches the client_credentials JWT.
 val m2mClient = OAuthM2mClient(
     httpClient = httpClient,
-    platformUrl = System.getenv("PLATFORM_BASE_URL"),
+    platformUrl = System.getenv("PLATFORM_URL"),
     clientId = System.getenv("PLATFORM_CLIENT_ID"),
     clientSecret = System.getenv("PLATFORM_CLIENT_SECRET"),
     audienceUrl = System.getenv("PLATFORM_AUDIENCE_URL"),
@@ -245,7 +245,7 @@ val entitlements = sdk.billingEntitlements.getBillingEntitlements("signal", orgI
 
 Tokens expire in 3600 seconds (1 hour). `OAuthM2mClient` refreshes the token
 60 seconds before expiry. There is no shared secret to rotate — to revoke a
-service's access, remove its `client_id` from `IAM_SERVICE_CLIENT_IDS` on
+service's access, remove its `client_id` from `OAUTH_SERVICE_CLIENT_IDS` on
 billing and `OAUTH_SERVICE_CLIENT_IDS` on the platform, then rotate the
 `client_secret` via `bun run oauth:register-clients` → rotate secret.
 

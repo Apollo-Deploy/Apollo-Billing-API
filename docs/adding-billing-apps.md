@@ -514,8 +514,8 @@ For each new app:
 - Configure checkout products with the product IDs registered in code.
 - Configure webhooks to the billing API `/webhooks/polar`.
 - Set `POLAR_WEBHOOK_SECRET` and `POLAR_API_KEY`.
-- Set `SERVICE_AUTH_SECRET` and include the app backend issuer in
-  `SERVICE_AUTH_ALLOWED_ISSUERS`.
+- Set `INTERNAL_SERVICE_SECRET` and include the app backend issuer in
+  `OAUTH_SERVICE_CLIENT_IDS`.
 - Ensure checkout uses `external_customer_id`; this API does it automatically.
 - Confirm customer state shows expected `active_subscriptions`,
   `granted_benefits`, and `active_meters`.

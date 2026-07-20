@@ -1,11 +1,14 @@
 package com.apollodeploy.billing.feature.customer.api
 
 import com.apollodeploy.billing.feature.common.api.BillingApiErrorResponse
+import com.apollodeploy.billing.feature.customer.domain.CreateCustomerSessionRequest
+import com.apollodeploy.billing.feature.customer.domain.CreateCustomerSessionResponse
 import com.apollodeploy.billing.feature.customer.domain.ListCustomerPaymentMethodsResponse
 import com.apollodeploy.billing.feature.customer.domain.OpenBillingPortalRequest
 import com.apollodeploy.billing.feature.customer.domain.OpenBillingPortalResponse
 import com.apollodeploy.billing.feature.customer.domain.ProvisionCustomerRequest
 import com.apollodeploy.billing.feature.customer.domain.ProvisionCustomerResponse
+import com.apollodeploy.billing.feature.customer.domain.SetDefaultPaymentMethodResponse
 import com.apollodeploy.billing.feature.customer.domain.UpdateCustomerBillingInfoRequest
 import com.apollodeploy.billing.feature.customer.domain.UpdateCustomerBillingInfoResponse
 import com.apollodeploy.tesseract.sdk
@@ -261,6 +264,59 @@ fun Route.customerBillingRoutes(controller: CustomerBillingController) {
             responseStatus = 204
         }
 
+        patch("/payment-methods/{paymentMethodId}/default", {
+            operationId = "setDefaultPaymentMethod"
+            summary = "Set default payment method"
+            description =
+                "Sets a saved payment method as the default for the org's Polar billing account. " +
+                "The default method is charged automatically on subscription renewals."
+            tags("Customer Billing")
+            protected = true
+            securitySchemeNames("serviceToken")
+            request {
+                pathParameter<String>("paymentMethodId") {
+                    description = "Polar payment method ID to set as default."
+                    required = true
+                }
+                queryParameter<String>("orgId") {
+                    description = "Internal organization identifier."
+                    required = true
+                }
+            }
+            response {
+                code(HttpStatusCode.OK) {
+                    description = "Default payment method updated successfully."
+                    body<SetDefaultPaymentMethodResponse> {
+                        description = "Updated Polar customer object."
+                    }
+                }
+                code(HttpStatusCode.BadRequest) {
+                    description = "Missing `orgId` or `paymentMethodId`."
+                    body<BillingApiErrorResponse>()
+                }
+                code(HttpStatusCode.Unauthorized) {
+                    description = "Missing, expired, or invalid internal service JWT."
+                    body<BillingApiErrorResponse>()
+                }
+                code(HttpStatusCode.NotFound) {
+                    description = "Polar could not find the customer or payment method."
+                    body<BillingApiErrorResponse>()
+                }
+                code(HttpStatusCode.BadGateway) {
+                    description = "Polar was unavailable or returned an unexpected failure."
+                    body<BillingApiErrorResponse>()
+                }
+            }
+        }) {
+            controller.setDefaultPaymentMethod(call)
+        }.sdk {
+            operationId = "setDefaultPaymentMethod"
+            methodName = "setDefaultPaymentMethod"
+            internal = true
+            queryParam("orgId", required = true, description = "Internal organization identifier.")
+            response<SetDefaultPaymentMethodResponse>()
+        }
+
         post("/portal", {
             operationId = "openBillingPortal"
             summary = "Open billing portal"
@@ -287,7 +343,7 @@ fun Route.customerBillingRoutes(controller: CustomerBillingController) {
                     }
                 }
                 code(HttpStatusCode.BadRequest) {
-                    description = "The request body is missing or `orgId` is blank."
+                    description = "The request body is missing, `orgId` is blank, or `returnUrl` fails URL validation."
                     body<BillingApiErrorResponse>()
                 }
                 code(HttpStatusCode.Unauthorized) {
@@ -311,6 +367,59 @@ fun Route.customerBillingRoutes(controller: CustomerBillingController) {
             internal = true
             requestBody<OpenBillingPortalRequest>()
             response<OpenBillingPortalResponse>()
+        }
+
+        post("/session", {
+            operationId = "createCustomerSession"
+            summary = "Create customer session"
+            description =
+                "Creates a short-lived Polar customer session token for the org. " +
+                "Use the returned `sessionToken` as a bearer token for direct Customer Portal API " +
+                "calls (e.g. listing subscriptions, managing payment methods). " +
+                "For a full portal redirect, use the `/portal` endpoint instead."
+            tags("Customer Billing")
+            protected = true
+            securitySchemeNames("serviceToken")
+            request {
+                body<CreateCustomerSessionRequest> {
+                    description =
+                        "`orgId` is required. `memberId` scopes portal activity to a specific user. " +
+                        "`returnUrl` sets the back-button URL shown inside the Customer Portal."
+                    required = true
+                }
+            }
+            response {
+                code(HttpStatusCode.OK) {
+                    description = "Customer session created successfully."
+                    body<CreateCustomerSessionResponse> {
+                        description = "The session token, portal URL, expiry, and session ID."
+                    }
+                }
+                code(HttpStatusCode.BadRequest) {
+                    description = "The request body is missing, `orgId` is blank, or `returnUrl` fails URL validation."
+                    body<BillingApiErrorResponse>()
+                }
+                code(HttpStatusCode.Unauthorized) {
+                    description = "Missing, expired, or invalid internal service JWT."
+                    body<BillingApiErrorResponse>()
+                }
+                code(HttpStatusCode.NotFound) {
+                    description = "Polar could not find the customer mapped to the organization."
+                    body<BillingApiErrorResponse>()
+                }
+                code(HttpStatusCode.BadGateway) {
+                    description = "Polar was unavailable or returned an unexpected failure."
+                    body<BillingApiErrorResponse>()
+                }
+            }
+        }) {
+            controller.createCustomerSession(call)
+        }.sdk {
+            operationId = "createCustomerSession"
+            methodName = "createCustomerSession"
+            internal = true
+            requestBody<CreateCustomerSessionRequest>()
+            response<CreateCustomerSessionResponse>()
         }
     }
 }
