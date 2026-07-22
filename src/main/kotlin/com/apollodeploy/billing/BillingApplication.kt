@@ -24,188 +24,309 @@ import io.github.smiley4.ktoropenapi.config.AuthType
 import io.github.smiley4.ktoropenapi.config.OutputFormat
 import io.github.smiley4.ktoropenapi.config.SchemaGenerator
 import io.ktor.http.HttpStatusCode
-import io.ktor.serialization.kotlinx.json.*
-import io.ktor.server.application.*
-import io.ktor.server.engine.*
-import io.ktor.server.netty.*
-import io.ktor.server.plugins.calllogging.*
-import io.ktor.server.plugins.contentnegotiation.*
+import io.ktor.serialization.kotlinx.json.json
+import io.ktor.server.application.Application
+import io.ktor.server.application.ApplicationStopped
+import io.ktor.server.application.install
+import io.ktor.server.engine.embeddedServer
+import io.ktor.server.netty.Netty
+import io.ktor.server.plugins.calllogging.CallLogging
+import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.ratelimit.RateLimit
 import io.ktor.server.plugins.ratelimit.RateLimitName
 import io.ktor.server.plugins.ratelimit.rateLimit
-import io.ktor.server.plugins.statuspages.*
-import io.ktor.server.response.*
-import io.ktor.server.routing.*
+import io.ktor.server.plugins.statuspages.StatusPages
+import io.ktor.server.plugins.statuspages.exception
+import io.ktor.server.request.path
+import io.ktor.server.response.respond
+import io.ktor.server.routing.routing
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
 import org.slf4j.event.Level
+import kotlin.time.Duration.Companion.minutes
+
+private const val API_TITLE = "Apollo Billing API"
+private const val API_VERSION = "1.0.0"
+private const val SERVER_HOST = "0.0.0.0"
+private const val HEALTH_PATH = "/health"
+private const val DEFAULT_BASE_URL = "https://api.billing.apollodeploy.com"
+
+private const val INTERNAL_ERROR_CODE = "internal_error"
+private const val INVALID_REDIRECT_CODE = "billing.invalid_redirect_url"
+
+private const val AUTH_ROUTE_SELECTOR =
+    "io.ktor.server.auth.AuthenticationRouteSelector"
+
+private val logger = LoggerFactory.getLogger("com.apollodeploy.billing")
+
+private val WebhookRateLimit = RateLimitName("webhook")
+private val InternalRateLimit = RateLimitName("internal")
+private val PublicRateLimit = RateLimitName("public")
+
+private val RateLimitWindow = 1.minutes
+
+private val ApiJson =
+    Json {
+        ignoreUnknownKeys = true
+        encodeDefaults = true
+        explicitNulls = false
+    }
+
+private val EmptyTags = emptyList<String>()
+private val BillingTags = listOf("Billing")
+private val CatalogTags = listOf("Catalog")
+private val HealthTags = listOf("Health")
+private val WebhookTags = listOf("Webhooks")
+private val EnforcementTags = listOf("Enforcement")
+private val EntitlementTags = listOf("Entitlements")
+private val CheckoutTags = listOf("Checkout")
+private val CustomerBillingTags = listOf("Customer Billing")
+private val UsageTags = listOf("Usage")
+private val SubscriptionTags = listOf("Subscriptions")
+private val InvoiceTags = listOf("Invoices")
+
+@Serializable
+private data class ErrorResponse(
+    val code: String,
+    val message: String?,
+)
 
 fun main() {
-    val isManifestMode = System.getenv("TESSERACT_GENERATE").let { it == "1" || it == "true" }
-    val assembly = if (isManifestMode) AppAssembly.createForManifest() else AppAssembly.create()
-    embeddedServer(Netty, port = AppConfig.billingPort, host = "0.0.0.0") {
+    val assembly =
+        if (envFlag("TESSERACT_GENERATE")) {
+            AppAssembly.createForManifest()
+        } else {
+            AppAssembly.create()
+        }
+
+    embeddedServer(
+        factory = Netty,
+        host = SERVER_HOST,
+        port = AppConfig.port,
+    ) {
         configure(assembly)
     }.start(wait = true)
 }
 
-/** Ktor config-file entry point — keeps the reference in application.conf valid. */
+/**
+ * Entry point used when Ktor loads the application from application.conf.
+ */
 fun Application.module() {
     configure(AppAssembly.create())
 }
 
 private fun Application.configure(assembly: AppAssembly) {
-    val logger = LoggerFactory.getLogger("com.apollodeploy.billing")
-
     installCorePlugins()
-    installErrorHandling(logger)
+    installOpenApi()
+    installErrorHandling()
+    installTesseract()
     registerRoutes(assembly)
-    install(TesseractPlugin) {
-        info =
-            ManifestInfo(
-                title = "Apollo Billing API",
-                version = "1.0.0",
-                description = "Server-to-server SDK for Apollo Deploy billing, entitlement, checkout, usage, and customer billing operations.",
-                baseUrl = System.getenv("TESSERACT_BASE_URL") ?: "https://billing.apollodeploy.com",
-            )
-        packageName = System.getenv("TESSERACT_PACKAGE_NAME") ?: "@apollo-deploy/billing-sdk"
-        packageVersion = System.getenv("TESSERACT_PACKAGE_VERSION")?.takeIf { it.isNotBlank() }
-        clientName = System.getenv("TESSERACT_CLIENT_NAME") ?: "ApolloBilling"
-        output = System.getenv("TESSERACT_SDK_OUTPUT") ?: "./sdk"
-        language = System.getenv("TESSERACT_LANGUAGE") ?: "typescript"
-        sdkStyle = System.getenv("TESSERACT_SDK_STYLE") ?: "functional"
-        clientType = System.getenv("TESSERACT_CLIENT_TYPE") ?: "internal"
-    }
 
-    environment.monitor.subscribe(ApplicationStopped) {
-        logger.info("[billing] Shutting down")
+    monitor.subscribe(ApplicationStopped) {
+        logger.info("Apollo Billing shutting down")
         assembly.close()
     }
-    logger.info("Apollo Billing started on port ${AppConfig.billingPort}")
+
+    logger.info(
+        "Apollo Billing started on port {}",
+        AppConfig.port,
+    )
 }
 
-// ── Private helpers ───────────────────────────────────────────────────────────
-
 private fun Application.installCorePlugins() {
-    install(RateLimit) {
-        register(RateLimitName("webhook")) {
-            rateLimiter(limit = 100, refillPeriod = kotlin.time.Duration.parse("60s"))
-        }
-        register(RateLimitName("internal")) {
-            rateLimiter(limit = 1000, refillPeriod = kotlin.time.Duration.parse("60s"))
-            requestKey { call -> call.request.local.remoteHost }
-        }
-        register(RateLimitName("public")) {
-            rateLimiter(limit = 60, refillPeriod = kotlin.time.Duration.parse("60s"))
-            requestKey { call -> call.request.local.remoteHost }
+    install(ContentNegotiation) {
+        json(ApiJson)
+    }
+
+    install(CallLogging) {
+        level = Level.INFO
+        filter { call ->
+            call.request.path() != HEALTH_PATH
         }
     }
 
+    install(RateLimit) {
+        register(WebhookRateLimit) {
+            rateLimiter(
+                limit = 100,
+                refillPeriod = RateLimitWindow,
+            )
+        }
+
+        register(InternalRateLimit) {
+            rateLimiter(
+                limit = 1_000,
+                refillPeriod = RateLimitWindow,
+            )
+
+            requestKey { call ->
+                call.request.local.remoteHost
+            }
+        }
+
+        register(PublicRateLimit) {
+            rateLimiter(
+                limit = 60,
+                refillPeriod = RateLimitWindow,
+            )
+
+            requestKey { call ->
+                call.request.local.remoteHost
+            }
+        }
+    }
+}
+
+private fun Application.installOpenApi() {
     install(OpenApi) {
         info {
-            title = "Apollo Billing API"
-            version = "1.0.0"
+            title = API_TITLE
+            version = API_VERSION
             description =
-                "Central billing API for Apollo Deploy internal apps. It provides server-to-server checkout, " +
-                "entitlement resolution, billing enforcement, usage ingestion, customer billing profile " +
-                "management, and Polar webhook handling."
+                "Central billing API for Apollo Deploy internal applications. " +
+                "Provides checkout, entitlement resolution, billing enforcement, " +
+                "usage ingestion, customer billing management, and Polar webhook handling."
         }
+
         server {
             url = "http://localhost:3040"
             description = "Local development"
         }
+
         server {
-            url = "https://billing.dev.apollodeploy.com"
-            description = "Development deployment"
+            url = "https://api.billing.apollodeploy.local"
+            description = "Development"
         }
+
         server {
-            url = "https://billing.apollodeploy.com"
+            url = DEFAULT_BASE_URL
             description = "Production"
         }
-        pathFilter = { _, url -> url.firstOrNull() != "docs" && url.isNotEmpty() }
+
+        pathFilter = { _, path ->
+            path.isNotEmpty() && path[0] != "docs"
+        }
+
         schemas {
             generator =
                 SchemaGenerator.reflection {
                     explicitNullTypes = false
                 }
         }
+
         tags {
-            tagGenerator = { url ->
-                when (url.firstOrNull()) {
-                    "billing" ->
-                        when (url.getOrNull(1)) {
-                            "catalog" -> listOf("Catalog")
-                            else -> listOf("Billing")
-                        }
-                    "health" -> listOf("Health")
-                    "webhooks" -> listOf("Webhooks")
-                    "internal" ->
-                        when (url.getOrNull(2)) {
-                            "enforce" -> listOf("Enforcement")
-                            "entitlements" -> listOf("Entitlements")
-                            "checkout" -> listOf("Checkout")
-                            "customer" -> listOf("Customer Billing")
-                            "usage" -> listOf("Usage")
-                            "subscriptions" -> listOf("Subscriptions")
-                            "invoices" -> listOf("Invoices")
-                            else -> listOf("Billing")
-                        }
-                    else -> listOf()
-                }
-            }
+            tagGenerator = ::openApiTags
         }
+
         security {
             securityScheme("serviceToken") {
                 type = AuthType.HTTP
                 scheme = AuthScheme.BEARER
                 bearerFormat = "JWT"
-                description = "Short-lived service JWT for internal backend-to-billing calls."
+                description =
+                    "Short-lived service JWT for internal backend-to-billing calls."
             }
         }
-        ignoredRouteSelectorClassNames = ignoredRouteSelectorClassNames +
-            "io.ktor.server.auth.AuthenticationRouteSelector"
+
+        ignoredRouteSelectorClassNames += AUTH_ROUTE_SELECTOR
         outputFormat = OutputFormat.JSON
-    }
-
-    install(ContentNegotiation) {
-        json(
-            Json {
-                ignoreUnknownKeys = true
-                encodeDefaults = true
-                explicitNulls = false
-            },
-        )
-    }
-
-    install(CallLogging) {
-        level = Level.INFO
-        filter { call -> call.request.local.uri != "/health" }
     }
 }
 
-private fun Application.installErrorHandling(logger: org.slf4j.Logger) {
+private fun openApiTags(path: List<String>): List<String> =
+    when (path.firstOrNull()) {
+        "health" -> HealthTags
+        "webhooks" -> WebhookTags
+
+        "billing" ->
+            when (path.getOrNull(1)) {
+                "catalog" -> CatalogTags
+                else -> BillingTags
+            }
+
+        "internal" ->
+            when (path.getOrNull(2)) {
+                "enforce" -> EnforcementTags
+                "entitlements" -> EntitlementTags
+                "checkout" -> CheckoutTags
+                "customer" -> CustomerBillingTags
+                "usage" -> UsageTags
+                "subscriptions" -> SubscriptionTags
+                "invoices" -> InvoiceTags
+                else -> BillingTags
+            }
+
+        else -> EmptyTags
+    }
+
+private fun Application.installErrorHandling() {
     install(StatusPages) {
         exception<OAuthServiceAuthException> { call, cause ->
             call.respond(
-                HttpStatusCode.Unauthorized,
-                mapOf("code" to cause.code, "message" to cause.message),
+                status = HttpStatusCode.Unauthorized,
+                message =
+                    ErrorResponse(
+                        code = cause.code,
+                        message = cause.message,
+                    ),
             )
         }
+
         exception<InvalidRedirectUrlException> { call, cause ->
             call.respond(
-                HttpStatusCode.BadRequest,
-                mapOf(
-                    "code" to "billing.invalid_redirect_url",
-                    "message" to "Invalid ${cause.fieldName}: ${cause.reason}",
-                ),
+                status = HttpStatusCode.BadRequest,
+                message =
+                    ErrorResponse(
+                        code = INVALID_REDIRECT_CODE,
+                        message = "Invalid ${cause.fieldName}: ${cause.reason}",
+                    ),
             )
         }
+
         exception<Throwable> { call, cause ->
-            logger.error("Unhandled exception on ${call.request.local.uri}", cause)
+            logger.error(
+                "Unhandled exception on {}",
+                call.request.path(),
+                cause,
+            )
+
             call.respond(
-                HttpStatusCode.InternalServerError,
-                mapOf("code" to "internal_error", "message" to "An unexpected error occurred"),
+                status = HttpStatusCode.InternalServerError,
+                message =
+                    ErrorResponse(
+                        code = INTERNAL_ERROR_CODE,
+                        message = "An unexpected error occurred",
+                    ),
             )
         }
+    }
+}
+
+private fun Application.installTesseract() {
+    install(TesseractPlugin) {
+        info =
+            ManifestInfo(
+                title = API_TITLE,
+                version = API_VERSION,
+                description =
+                    "Server-to-server SDK for Apollo Deploy billing, entitlement, " +
+                    "checkout, usage, and customer billing operations.",
+                baseUrl = env("TESSERACT_BASE_URL", DEFAULT_BASE_URL),
+            )
+
+        packageName =
+            env(
+                "TESSERACT_PACKAGE_NAME",
+                "@apollo-deploy/billing-sdk",
+            )
+
+        packageVersion = envOrNull("TESSERACT_PACKAGE_VERSION")
+        clientName = env("TESSERACT_CLIENT_NAME", "ApolloBilling")
+        output = env("TESSERACT_SDK_OUTPUT", "./sdk")
+        language = env("TESSERACT_LANGUAGE", "typescript")
+        sdkStyle = env("TESSERACT_SDK_STYLE", "functional")
+        clientType = env("TESSERACT_CLIENT_TYPE", "internal")
     }
 }
 
@@ -213,11 +334,15 @@ private fun Application.registerRoutes(assembly: AppAssembly) {
     routing {
         healthRoutes(assembly.healthController)
         docsRoutes()
-        rateLimit(RateLimitName("public")) {
-            productCatalogRoutes(assembly.productCatalogController)
+
+        rateLimit(PublicRateLimit) {
+            productCatalogRoutes(
+                assembly.productCatalogController,
+            )
         }
+
         oauthInternalRoutes(assembly.httpClient) {
-            rateLimit(RateLimitName("internal")) {
+            rateLimit(InternalRateLimit) {
                 enforceRoutes(assembly.enforceController)
                 entitlementsRoutes(assembly.entitlementsController)
                 checkoutRoutes(assembly.checkoutController)
@@ -227,8 +352,28 @@ private fun Application.registerRoutes(assembly: AppAssembly) {
                 invoicesRoutes(assembly.invoicesController)
             }
         }
-        rateLimit(RateLimitName("webhook")) {
-            polarWebhookRoutes(assembly.polarWebhookController)
+
+        rateLimit(WebhookRateLimit) {
+            polarWebhookRoutes(
+                assembly.polarWebhookController,
+            )
         }
     }
 }
+
+private fun envFlag(name: String): Boolean {
+    val value = System.getenv(name) ?: return false
+
+    return value == "1" ||
+        value.equals("true", ignoreCase = true)
+}
+
+private fun env(
+    name: String,
+    default: String,
+): String =
+    envOrNull(name) ?: default
+
+private fun envOrNull(name: String): String? =
+    System.getenv(name)
+        ?.takeIf(String::isNotBlank)
