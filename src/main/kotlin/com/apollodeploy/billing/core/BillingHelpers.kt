@@ -1,47 +1,130 @@
 package com.apollodeploy.billing.core
 
 /**
- * Pure billing helper functions — extension functions on [PlanFeatureConfig].
- * Ported from apollo-signal-api core/billing/BillingHelpers.kt.
+ * Value representing a quota with no limit.
  */
-const val UNLIMITED_SENTINEL = -1
+const val UNLIMITED_SENTINEL: Int = -1
 
-fun PlanFeatureConfig.hasFeature(name: String): Boolean = features[name] == true
+private const val DEFAULT_LEVEL = "none"
+private const val UNLIMITED_LABEL = "unlimited"
+private const val INVALID_LEVEL = -1
 
-fun PlanFeatureConfig.getLimit(key: String): Int = limits[key] ?: 0
+fun PlanFeatureConfig.hasFeature(name: String): Boolean =
+    features[name] == true
 
-fun PlanFeatureConfig.isFeatureEnabled(feature: String): Boolean {
-    val colonIdx = feature.indexOf(':')
-    return if (colonIdx == -1) {
-        hasFeature(feature)
-    } else {
-        val key = feature.substring(0, colonIdx)
-        val required = feature.substring(colonIdx + 1)
-        val order = LEVEL_ORDERS[key] ?: return false
-        val current = levels[key] ?: "none"
-        order.indexOf(current) >= order.indexOf(required)
+fun PlanFeatureConfig.getLimit(name: String): Int =
+    limits[name] ?: 0
+
+fun PlanFeatureConfig.isFeatureEnabled(requirement: String): Boolean {
+    val separator = requirement.indexOf(':')
+
+    if (separator < 0) {
+        return hasFeature(requirement)
     }
+
+    if (separator == 0 || separator == requirement.lastIndex) {
+        return false
+    }
+
+    return isFeatureEnabled(
+        feature = requirement.substring(0, separator),
+        requiredLevel = requirement.substring(separator + 1),
+    )
 }
 
-fun PlanFeatureConfig.computeRemaining(usage: Map<String, Int>): Map<String, Any> =
-    buildMap {
-        for ((key, limit) in limits) {
-            val current = usage[key] ?: 0
-            put(key, if (limit == UNLIMITED_SENTINEL) "unlimited" else maxOf(0, limit - current))
-        }
+/**
+ * Prefer this overload when the feature and level are already separate.
+ * It avoids parsing and substring allocations.
+ */
+fun PlanFeatureConfig.isFeatureEnabled(
+    feature: String,
+    requiredLevel: String,
+): Boolean {
+    val requiredRank = levelRank(feature, requiredLevel)
+    if (requiredRank == INVALID_LEVEL) {
+        return false
     }
 
-fun Int.isUnlimited(): Boolean = this == UNLIMITED_SENTINEL
+    val currentRank =
+        levelRank(
+            feature = feature,
+            level = levels[feature] ?: DEFAULT_LEVEL,
+        )
 
-fun Int.isWithinLimit(usage: Int): Boolean = this == UNLIMITED_SENTINEL || usage < this
+    return currentRank >= requiredRank
+}
 
-fun Int.remainingQuota(usage: Int): Int = if (this == UNLIMITED_SENTINEL) Int.MAX_VALUE else maxOf(0, this - usage)
+fun PlanFeatureConfig.computeRemaining(
+    usage: Map<String, Int>,
+): Map<String, Any> {
+    if (limits.isEmpty()) {
+        return emptyMap()
+    }
 
-private val LEVEL_ORDERS: Map<String, List<String>> =
-    mapOf(
-        "rolloutEngine" to listOf("none", "manual", "rules", "dynamic"),
-        "releaseApprovals" to listOf("none", "single", "multi"),
-        "customPipelineStages" to listOf("none", "basic", "advanced"),
-        "policyEnforcement" to listOf("none", "basic", "advanced"),
-        "anomalyDetection" to listOf("none", "basic", "advanced"),
-    )
+    val remaining = HashMap<String, Any>(limits.size)
+
+    for ((name, limit) in limits) {
+        remaining[name] =
+            if (limit.isUnlimited()) {
+                UNLIMITED_LABEL
+            } else {
+                limit.remainingQuota(usage[name] ?: 0)
+            }
+    }
+
+    return remaining
+}
+
+fun Int.isUnlimited(): Boolean =
+    this == UNLIMITED_SENTINEL
+
+fun Int.isWithinLimit(usage: Int): Boolean =
+    isUnlimited() || usage < this
+
+fun Int.remainingQuota(usage: Int): Int =
+    when {
+        isUnlimited() -> Int.MAX_VALUE
+        usage >= this -> 0
+        else -> this - usage
+    }
+
+private fun levelRank(
+    feature: String,
+    level: String,
+): Int =
+    when (feature) {
+        "rolloutEngine" -> rolloutEngineRank(level)
+        "releaseApprovals" -> releaseApprovalRank(level)
+
+        "customPipelineStages",
+        "policyEnforcement",
+        "anomalyDetection",
+        -> standardLevelRank(level)
+
+        else -> INVALID_LEVEL
+    }
+
+private fun rolloutEngineRank(level: String): Int =
+    when (level) {
+        "none" -> 0
+        "manual" -> 1
+        "rules" -> 2
+        "dynamic" -> 3
+        else -> INVALID_LEVEL
+    }
+
+private fun releaseApprovalRank(level: String): Int =
+    when (level) {
+        "none" -> 0
+        "single" -> 1
+        "multi" -> 2
+        else -> INVALID_LEVEL
+    }
+
+private fun standardLevelRank(level: String): Int =
+    when (level) {
+        "none" -> 0
+        "basic" -> 1
+        "advanced" -> 2
+        else -> INVALID_LEVEL
+    }

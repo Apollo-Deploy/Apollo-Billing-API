@@ -1,171 +1,255 @@
 package com.apollodeploy.billing.core
 
 import arrow.core.Either
-import arrow.core.raise.either
-import arrow.core.raise.ensure
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Deferred
+import java.util.LinkedHashMap
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.ConcurrentLinkedDeque
+import java.util.concurrent.TimeUnit
+
+private const val CACHE_MAX_ENTRIES = 10_000
+private const val SIGNAL_DB_SERVICE = "signal-db"
+private const val BILLING_SERVICE = "billing"
+
+private val Allowed: Either<Nothing, Unit> = Either.Right(Unit)
 
 /**
- * Apollo Billing — core enforcement engine.
+ * Resolves and enforces billing entitlements.
  *
- * Resolves entitlements via injected config (plan + usage), caches results
- * with single-flight deduplication, then checks limits or feature flags.
- *
- * Security enhancements over the original:
- *   - LRU cache with proper eviction (access-ordered LinkedHashMap under lock)
- *   - Arrow `Either` for typed errors — no hidden exceptions in enforcement path
- *   - Meter enforcement uses Redis-backed Polar state (no more naive fail-open)
+ * Successful resolutions are cached using a bounded, access-ordered LRU cache.
+ * Concurrent resolutions for the same organization share one request.
  */
 class BillingEnforcer(
     val config: BillingConfig,
 ) {
-    private val cache = ConcurrentHashMap<String, CacheEntry>()
-    private val accessOrder = ConcurrentLinkedDeque<String>()
-    private val inflight = ConcurrentHashMap<String, Deferred<AppEntitlements>>()
-    private val cacheMaxEntries = 10_000
+    private val cacheTtlNanos =
+        TimeUnit.MILLISECONDS.toNanos(
+            config.cacheTtlMs.coerceAtLeast(0),
+        )
 
-    private data class CacheEntry(
-        val value: AppEntitlements,
-        val expiresAt: Long,
-    )
-
-    /**
-     * Resolves entitlements with in-process caching and single-flight dedup.
-     *
-     * Returns [Either.Left] with [BillingError.NoSubscription] when no active subscription exists,
-     * or [BillingError.ServiceUnavailable] when a backing service is unreachable.
-     */
-    suspend fun resolveEntitlements(orgId: String): Either<BillingError, AppEntitlements> =
-        either {
-            val now = System.currentTimeMillis()
-
-            val cached = cache[orgId]
-            if (cached != null && cached.expiresAt > now) return@either cached.value
-            cache.remove(orgId)
-
-            val deferred = CompletableDeferred<AppEntitlements>()
-            val pending = inflight.putIfAbsent(orgId, deferred)
-            if (pending != null) return@either pending.await()
-
-            try {
-                val resolution = config.resolvePlanAndUsage(orgId)
-                val entitlements =
-                    AppEntitlements(
-                        appSlug = config.appSlug,
-                        orgId = orgId,
-                        planId = resolution.plan.planId,
-                        limits = resolution.plan.config,
-                        usage = resolution.usage,
-                        remaining = resolution.plan.config.computeRemaining(resolution.usage),
-                    )
-                if (config.cacheTtlMs > 0) {
-                    evictIfNeeded()
-                    cache[orgId] = CacheEntry(entitlements, now + config.cacheTtlMs)
-                    accessOrder.remove(orgId)
-                    accessOrder.addLast(orgId)
-                }
-                deferred.complete(entitlements)
-                entitlements
-            } catch (e: SubscriptionNotFoundError) {
-                deferred.completeExceptionally(e)
-                raise(BillingError.NoSubscription(orgId = e.orgId, appSlug = e.appSlug))
-            } catch (e: SignalDbUnavailableError) {
-                deferred.completeExceptionally(e)
-                raise(BillingError.ServiceUnavailable(service = "signal-db", reason = e.message))
-            } catch (e: Exception) {
-                deferred.completeExceptionally(e)
-                raise(BillingError.ServiceUnavailable(service = "billing", reason = e.message))
-            } finally {
-                inflight.remove(orgId, deferred)
-            }
+    private val cache =
+        object : LinkedHashMap<String, CacheEntry>(
+            16,
+            0.75f,
+            true,
+        ) {
+            override fun removeEldestEntry(
+                eldest: MutableMap.MutableEntry<String, CacheEntry>?,
+            ): Boolean = size > CACHE_MAX_ENTRIES
         }
 
-    /** Invalidates the cache entry for an org (call after subscription changes). */
-    fun invalidate(orgId: String) {
-        cache.remove(orgId)
-        accessOrder.remove(orgId)
+    private val inflight =
+        ConcurrentHashMap<
+            String,
+            CompletableDeferred<Either<BillingError, AppEntitlements>>,
+        >()
+
+    private data class CacheEntry(
+        val result: Either<BillingError, AppEntitlements>,
+        val expiresAtNanos: Long,
+    )
+
+    suspend fun resolveEntitlements(
+        orgId: String,
+    ): Either<BillingError, AppEntitlements> {
+        getCached(orgId)?.let { return it }
+
+        val deferred =
+            CompletableDeferred<Either<BillingError, AppEntitlements>>()
+
+        val existing = inflight.putIfAbsent(orgId, deferred)
+        if (existing != null) {
+            return existing.await()
+        }
+
+        try {
+            val result = resolveFresh(orgId)
+            deferred.complete(result)
+            return result
+        } catch (cause: CancellationException) {
+            deferred.cancel(cause)
+            throw cause
+        } catch (cause: Throwable) {
+            deferred.completeExceptionally(cause)
+            throw cause
+        } finally {
+            inflight.remove(orgId, deferred)
+        }
     }
 
-    /**
-     * Enforce quota — returns [BillingError.QuotaExceeded] if over limit.
-     */
+    fun invalidate(orgId: String) {
+        synchronized(cache) {
+            cache.remove(orgId)
+        }
+    }
+
     suspend fun enforceQuota(
         orgId: String,
         resource: String,
         limitKey: String,
     ): Either<BillingError, Unit> =
-        either {
-            val entitlements = resolveEntitlements(orgId).bind()
-            val limit = entitlements.limits.getLimit(limitKey)
-            val current = entitlements.usage[limitKey] ?: 0
-            ensure(limit.isWithinLimit(current)) {
-                BillingError.QuotaExceeded(
-                    resource = resource,
-                    current = current,
-                    limit = limit,
-                    appSlug = config.appSlug,
-                )
+        when (val result = resolveEntitlements(orgId)) {
+            is Either.Left -> result
+
+            is Either.Right -> {
+                val entitlements = result.value
+                val limit = entitlements.limits.getLimit(limitKey)
+                val usage = entitlements.usage[limitKey] ?: 0
+
+                if (limit.isWithinLimit(usage)) {
+                    Allowed
+                } else {
+                    Either.Left(
+                        BillingError.QuotaExceeded(
+                            resource = resource,
+                            current = usage,
+                            limit = limit,
+                            appSlug = config.appSlug,
+                        ),
+                    )
+                }
             }
         }
 
-    /**
-     * Enforce feature flag — returns [BillingError.FeatureNotAvailable] if not enabled.
-     */
     suspend fun enforceFeature(
         orgId: String,
         feature: String,
     ): Either<BillingError, Unit> =
-        either {
-            val entitlements = resolveEntitlements(orgId).bind()
-            ensure(entitlements.limits.isFeatureEnabled(feature)) {
-                BillingError.FeatureNotAvailable(
-                    feature = feature,
-                    currentPlan = entitlements.planId,
-                    appSlug = config.appSlug,
-                )
+        when (val result = resolveEntitlements(orgId)) {
+            is Either.Left -> result
+
+            is Either.Right -> {
+                val entitlements = result.value
+
+                if (entitlements.limits.isFeatureEnabled(feature)) {
+                    Allowed
+                } else {
+                    Either.Left(
+                        BillingError.FeatureNotAvailable(
+                            feature = feature,
+                            currentPlan = entitlements.planId,
+                            appSlug = config.appSlug,
+                        ),
+                    )
+                }
             }
         }
 
-    /**
-     * Enforce meter balance (Polar Credits-backed resources).
-     *
-     * With Redis-backed Polar state, the meter key will almost always be present
-     * (either fresh from Polar or stale from Redis). Only if BOTH Polar AND Redis
-     * are down will the key be absent — in that case we fail-open (allow) as a
-     * last-resort so customers aren't permanently locked out.
-     *
-     * Returns [BillingError.MeterExhausted] if balance < needed.
-     */
     suspend fun enforceMeter(
         orgId: String,
         meterKey: String,
         needed: Int = 1,
     ): Either<BillingError, Unit> =
-        either {
-            val entitlements = resolveEntitlements(orgId).bind()
-            val balance =
-                entitlements.usage[meterKey]
-                    ?: return@either Unit // Both Polar AND Redis down — last-resort fail-open
+        when (val result = resolveEntitlements(orgId)) {
+            is Either.Left -> result
 
-            ensure(balance >= needed) {
-                BillingError.MeterExhausted(
-                    meterKey = meterKey,
-                    balance = balance,
-                    needed = needed,
-                    appSlug = config.appSlug,
-                )
+            is Either.Right -> {
+                val balance = result.value.usage[meterKey]
+
+                when {
+                    balance == null -> Allowed
+                    balance >= needed -> Allowed
+
+                    else ->
+                        Either.Left(
+                            BillingError.MeterExhausted(
+                                meterKey = meterKey,
+                                balance = balance,
+                                needed = needed,
+                                appSlug = config.appSlug,
+                            ),
+                        )
+                }
             }
         }
 
-    // ─── LRU eviction ─────────────────────────────────────────────────────────
+    private suspend fun resolveFresh(
+        orgId: String,
+    ): Either<BillingError, AppEntitlements> =
+        try {
+            val resolution = config.resolvePlanAndUsage(orgId)
 
-    private fun evictIfNeeded() {
-        while (cache.size >= cacheMaxEntries) {
-            val oldest = accessOrder.pollFirst() ?: break
-            cache.remove(oldest)
+            val entitlements =
+                AppEntitlements(
+                    appSlug = config.appSlug,
+                    orgId = orgId,
+                    planId = resolution.plan.planId,
+                    limits = resolution.plan.config,
+                    usage = resolution.usage,
+                    remaining =
+                        resolution.plan.config.computeRemaining(
+                            resolution.usage,
+                        ),
+                )
+
+            val result: Either<BillingError, AppEntitlements> =
+                Either.Right(entitlements)
+
+            putCached(orgId, result)
+            result
+        } catch (cause: CancellationException) {
+            throw cause
+        } catch (cause: SubscriptionNotFoundError) {
+            Either.Left(
+                BillingError.NoSubscription(
+                    orgId = cause.orgId,
+                    appSlug = cause.appSlug,
+                ),
+            )
+        } catch (cause: SignalDbUnavailableError) {
+            Either.Left(
+                BillingError.ServiceUnavailable(
+                    service = SIGNAL_DB_SERVICE,
+                    reason = cause.message,
+                ),
+            )
+        } catch (cause: Exception) {
+            Either.Left(
+                BillingError.ServiceUnavailable(
+                    service = BILLING_SERVICE,
+                    reason = cause.message,
+                ),
+            )
+        }
+
+    private fun getCached(
+        orgId: String,
+    ): Either<BillingError, AppEntitlements>? {
+        if (cacheTtlNanos <= 0) {
+            return null
+        }
+
+        val now = System.nanoTime()
+
+        return synchronized(cache) {
+            val entry = cache[orgId]
+                ?: return@synchronized null
+
+            if (entry.expiresAtNanos > now) {
+                entry.result
+            } else {
+                cache.remove(orgId)
+                null
+            }
+        }
+    }
+
+    private fun putCached(
+        orgId: String,
+        result: Either<BillingError, AppEntitlements>,
+    ) {
+        if (cacheTtlNanos <= 0) {
+            return
+        }
+
+        val entry =
+            CacheEntry(
+                result = result,
+                expiresAtNanos = System.nanoTime() + cacheTtlNanos,
+            )
+
+        synchronized(cache) {
+            cache[orgId] = entry
         }
     }
 }

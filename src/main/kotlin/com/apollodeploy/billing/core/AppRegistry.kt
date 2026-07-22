@@ -46,6 +46,15 @@ class AppRegistry(
     /** Resolves the app/product owner for a Polar product ID from webhooks. */
     fun productForPolarProductId(polarProductId: String): BillingProduct? = productsByPolarProductId[polarProductId]
 
+    /** Human-readable plan/product name from the registered app catalog. */
+    fun productDisplayName(polarProductId: String): String? = catalogItemForPolarProductId(polarProductId)?.name
+
+    /** Registered catalog item for a Polar product ID. */
+    fun catalogItemForPolarProductId(polarProductId: String): BillingCatalogItem? {
+        val product = productForPolarProductId(polarProductId) ?: return null
+        return catalog(product.appSlug)?.firstOrNull { it.polarProductId == polarProductId }
+    }
+
     /** Invalidates the entitlement cache for an org across all registered apps. */
     fun invalidateAll(orgId: String) = enforcers.values.forEach { it.invalidate(orgId) }
 }
