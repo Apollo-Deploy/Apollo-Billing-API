@@ -1,6 +1,6 @@
 # Apollo Billing API
 
-Central billing service for the Apollo Deploy platform. Handles subscriptions, entitlements, enforcement, metered usage, checkout, and customer billing profiles — all backed by [Polar](https://polar.sh).
+Central billing service for the Apollo Deploy platform. Handles subscriptions, entitlements, enforcement, metered usage, checkout, invoices, and customer billing profiles — all backed by [Polar](https://polar.sh).
 
 Built with **Kotlin**, **Ktor**, **Netty**, and **PostgreSQL** (via HikariCP). Runs as a single container that joins the platform Docker network.
 
@@ -9,12 +9,10 @@ Built with **Kotlin**, **Ktor**, **Netty**, and **PostgreSQL** (via HikariCP). R
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │  Internal Apps (Signal, Deploy, …)                                  │
-│  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌──────────────┐  │
-│  │ Enforce    │  │ Entitle    │  │ Checkout   │  │ Usage Ingest │  │
-│  └─────┬──────┘  └─────┬──────┘  └──────┬─────┘  └──────┬───────┘  │
-└────────┼────────────────┼────────────────┼───────────────┼──────────┘
-         │  OAuth 2.1 M2M (EdDSA JWT)     │               │
-         ▼                ▼                ▼               ▼
+│  Enforce · Entitlements · Checkout · Usage · Customer · Subs/Invoices│
+└───────────────────────────────┬─────────────────────────────────────┘
+                                │  OAuth 2.1 M2M (EdDSA JWT)
+                                ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │  Apollo Billing API  (this service)                                 │
 │  /internal/billing/enforce                                          │
@@ -22,19 +20,23 @@ Built with **Kotlin**, **Ktor**, **Netty**, and **PostgreSQL** (via HikariCP). R
 │  /internal/billing/checkout                                         │
 │  /internal/billing/usage/ingest                                     │
 │  /internal/billing/customer/*                                       │
+│  /internal/billing/subscriptions                                    │
+│  /internal/billing/invoices                                         │
 │  /billing/catalog/{app}  (public)                                   │
 │  /webhooks/polar                                                    │
-│  /health                                                            │
-└─────────────────┬───────────────────────────────────────────────────┘
-                  │
-                  ▼
-         ┌────────────────┐       ┌──────────────┐
-         │  Platform DB   │       │  Polar API   │
-         │  (PostgreSQL)  │       │              │
-         └────────────────┘       └──────────────┘
+│  /health · /docs                                                    │
+└───────────────┬───────────────────────────────┬─────────────────────┘
+                │                               │
+                ▼                               ▼
+       ┌────────────────┐              ┌──────────────┐
+       │ Platform DB +  │              │  Polar API   │
+       │ Redis (shared) │              │              │
+       └────────────────┘              └──────────────┘
 ```
 
-**Billing does NOT own** Postgres, Redis, or nginx. All infrastructure is provided by the platform stack. This service only joins the platform Docker network to reach those services.
+**Billing does NOT own** Postgres, Redis, or nginx. Infrastructure comes from the platform stack. This service joins the shared Docker network to reach those services.
+
+Configuration is loaded through nested typed objects in `AppConfig` (`polar`, `platform`, `iam`, `redis`, `platformDatabase`, `signalDatabase`, …) from `application.conf` and environment overrides.
 
 ---
 
@@ -43,30 +45,47 @@ Built with **Kotlin**, **Ktor**, **Netty**, and **PostgreSQL** (via HikariCP). R
 ### Prerequisites
 
 - Docker 24+ (BuildKit enabled)
-- Terraform >= 1.6
-- Java 21 (local development only, outside Docker)
+- Terraform >= 1.10
+- Java 21 (local development outside Docker)
 
 ### Start the full local stack
 
-The billing service is part of the shared Terraform-managed local environment.
-From the repo root:
+Billing is part of the shared Terraform-managed local environment under `APIs/infra`.
+
+From this repo (`apollo-billing-api`):
 
 ```bash
 export NPM_TOKEN=npm_...             # required for platform build
 export CODEARTIFACT_AUTH_TOKEN=...   # required if enable_signal=true
 
-cd infra/terraform/environments/local
+cd ../infra/terraform/local
 terraform init        # first time only
 terraform apply -auto-approve
 ```
 
-This builds images, starts infra (Postgres, PgBouncer, Redis), runs migrations,
-registers OAuth clients, and starts Platform, Billing, and Signal automatically.
-
-Verify billing is running:
+Or from this repo with Make:
 
 ```bash
-curl http://localhost:3040/health
+make tf-up
+```
+
+This starts infra (Postgres, PgBouncer, Redis), runs migrations, registers OAuth clients, and starts Platform, Billing, and Signal.
+
+Local Terraform defaults to **dev mode**: source is bind-mounted and the container builds `shadowJar` on start (no full image rebuild). After code changes:
+
+```bash
+docker restart apollo-billing
+# or force a clean jar rebuild inside the container:
+docker exec apollo-billing ./gradlew shadowJar --no-daemon -x test --rerun-tasks
+docker restart apollo-billing
+```
+
+Verify billing:
+
+```bash
+docker exec apollo-billing wget -qO- http://127.0.0.1:3040/health
+# or via the local HTTPS edge (mkcert):
+# curl https://api.billing.apollodeploy.local/health
 ```
 
 ### Configuration
@@ -74,13 +93,13 @@ curl http://localhost:3040/health
 Optional credentials (Polar, AWS, etc.) go in `terraform.tfvars`:
 
 ```bash
-cd infra/terraform/environments/local
+cd ../infra/terraform/local
 cp terraform.tfvars.example terraform.tfvars
 # edit terraform.tfvars, then re-apply
 terraform apply -auto-approve
 ```
 
-See `terraform.tfvars.example` for all available options.
+See `terraform.tfvars.example` for available options. For a standalone JVM process, copy [`.env.example`](.env.example) to `.env`.
 
 ---
 
@@ -94,7 +113,7 @@ make dev          # hot-reload with Gradle continuous build
 make run-prod     # production mode
 ```
 
-Requires Java 21. Set `JAVA_HOME` if it's not at the default Homebrew path.
+Requires Java 21. Set `JAVA_HOME` if it is not at the default Homebrew path.
 
 ### Build
 
@@ -123,9 +142,8 @@ make check        # lint + test
 ### Terraform / container commands
 
 ```bash
-cd infra/terraform/environments/local
-make tf-up      # apply (build + start)
-make tf-down    # destroy all containers
+make tf-up      # apply (build + start) local stack
+make tf-down    # destroy local stack
 make tf-logs    # tail billing logs
 ```
 
@@ -138,10 +156,30 @@ docker restart apollo-billing
 
 ### Database
 
+Migrations live in `scripts/migrations/`:
+
+| File | Purpose |
+|------|---------|
+| `01_billing_core.psql` | Core billing tables |
+| `02_billing_subscription_renewal.psql` | Renewal / cancel-at-period-end columns |
+| `03_billing_subscription_display.psql` | Display fields for client dashboards |
+
 ```bash
-make migrate      # apply pending migrations from scripts/migrations/
+make migrate      # apply pending migrations
 make db-connect   # open psql shell
 ```
+
+### Polar catalog helpers
+
+Scripts under `scripts/polar/` set up Signal products in Polar (sandbox or production):
+
+```bash
+# See scripts/polar/setup-signal.sh and signal-catalog.sh
+# Enterprise attach helper:
+# scripts/polar/attach-enterprise-plan.sh
+```
+
+Also see [Enterprise Provisioning](docs/enterprise-plan-provisioning.md).
 
 ---
 
@@ -149,20 +187,21 @@ make db-connect   # open psql shell
 
 See [`.env.example`](.env.example) for the full list with descriptions.
 
-Key groups:
+Key groups (mapped into nested `AppConfig`):
 
+- **Runtime** — `APP_ENV`, `BILLING_PORT`, `METRICS_ENABLED`, `CORS_ORIGINS`
 - **Platform DB** — `PLATFORM_DB_HOST`, `PLATFORM_DB_PORT`, `PLATFORM_DB_NAME`, `PLATFORM_DB_USER`, `PLATFORM_DB_PASSWORD`, `PLATFORM_DB_SSLMODE`
-- **Signal DB** — `SIGNAL_DB_HOST`, `SIGNAL_DB_PORT`, `SIGNAL_DB_NAME`, `SIGNAL_DB_SSLMODE`
-- **Redis** — `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`
+- **Reader / Signal DB** — `BILLING_SUPERUSER_PASSWORD`, `SIGNAL_DB_HOST`, `SIGNAL_DB_PORT`, `SIGNAL_DB_NAME`, `SIGNAL_DB_SSLMODE`
+- **Redis** — `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_DB`
 - **Polar** — `POLAR_API_KEY`, `POLAR_WEBHOOK_SECRET`, `POLAR_API_BASE_URL`
-- **OAuth/IAM** — `PLATFORM_URL`, `PLATFORM_CLIENT_ID`, `PLATFORM_CLIENT_SECRET`, `AUTH_JWKS_URL`, `OAUTH_SERVICE_CLIENT_IDS`
-- **SSL** — `PLATFORM_DB_SSLMODE`, `SIGNAL_DB_SSLMODE`, `DB_PROVIDER` (supports `postgres`, `planetscale`)
+- **OAuth/IAM** — `PLATFORM_URL`, `PLATFORM_CLIENT_ID`, `PLATFORM_CLIENT_SECRET`, `AUTH_JWKS_URL`, `AUTH_OAUTH_ISSUER_URL`, `AUTH_OAUTH_VALID_AUDIENCES`, `OAUTH_SERVICE_CLIENT_IDS`
+- **SSL** — `DB_PROVIDER` (`postgres` / `planetscale`) influences effective SSL mode
 
 ---
 
 ## Adding Billing to a New Project
 
-This section covers how to integrate billing into a new internal Apollo app (e.g. "Deploy", "Launchpad").
+This section covers integrating billing into a new internal Apollo app (e.g. "Deploy", "Launchpad").
 
 ### Overview
 
@@ -183,27 +222,9 @@ src/main/kotlin/com/apollodeploy/billing/feature/<app>/domain/<App>PlanCatalog.k
 src/main/kotlin/com/apollodeploy/billing/feature/<app>/application/<App>BillingConfig.kt
 ```
 
-The **plan catalog** defines plans, entitlements, products, and meter IDs:
+The **plan catalog** defines plans, entitlements, products, and meter IDs.
 
-```kotlin
-data class DeployPlan(
-    val slug: String,
-    val polarProductId: String,
-    val name: String,
-    val entitlements: DeployPlanEntitlements,
-)
-
-val deployPlans = listOf(
-    DeployPlan(
-        slug = "deploy-pro",
-        polarProductId = "<polar-product-id>",
-        name = "Pro",
-        entitlements = DeployPlanEntitlements(maxProjects = 20, advancedRollouts = true),
-    ),
-)
-```
-
-The **billing config** wires plan resolution, usage resolution, and product registration:
+The **billing config** wires a single `resolvePlanAndUsage` callback (one round-trip for plan + usage) and product registration:
 
 ```kotlin
 class DeployBillingConfig(
@@ -213,37 +234,45 @@ class DeployBillingConfig(
 ) {
     companion object { const val APP_SLUG = "deploy" }
 
-    fun buildRegistration(): BillingAppRegistration = BillingAppRegistration(
-        slug = APP_SLUG,
-        enforcer = BillingEnforcer(BillingConfig(
-            appSlug = APP_SLUG,
-            resolvePlan = { orgId -> resolvePlan(orgId) },
-            resolveUsage = { orgId -> resolveUsage(orgId) },
-        )),
-        products = billingProducts(),
-    )
-    // ... plan resolution, usage resolution, product list
+    fun buildRegistration(): BillingAppRegistration =
+        BillingAppRegistration(
+            slug = APP_SLUG,
+            enforcer = BillingEnforcer(
+                BillingConfig(
+                    appSlug = APP_SLUG,
+                    resolvePlanAndUsage = { orgId -> resolvePlanAndUsage(orgId) },
+                ),
+            ),
+            products = billingProducts(),
+            catalog = billingCatalog(),
+        )
+
+    private suspend fun resolvePlanAndUsage(orgId: String): PlanAndUsageResolution {
+        // Resolve plan + usage for orgId, then return PlanAndUsageResolution(...)
+        TODO()
+    }
 }
 ```
 
-Then register it in `AppAssembly.kt`:
+Register it in `AppAssembly.kt` next to Signal:
 
 ```kotlin
-val deployApp = DeployBillingConfig(db, subscriptionRepo, polarClient).buildRegistration()
+val deployApp = DeployBillingConfig(...).buildRegistration()
 val appRegistry = AppRegistry(listOf(signalApp, deployApp))
 ```
 
 Seed the database:
 
 ```sql
-INSERT INTO platform_apps (slug, name) VALUES ('deploy', 'Apollo Deploy') ON CONFLICT (slug) DO NOTHING;
+INSERT INTO platform_apps (slug, name) VALUES ('deploy', 'Apollo Deploy')
+ON CONFLICT (slug) DO NOTHING;
 ```
 
 ### Step 2: Set up Polar products
 
-Use the [Billing-Plan-Setup](https://github.com/Apollo-Deploy/Billing-Plan-Setup) repo to configure Polar products, meters, and webhooks for the new app.
+Use the [Billing-Plan-Setup](https://github.com/Apollo-Deploy/Billing-Plan-Setup) repo (and/or `scripts/polar/` for Signal) to configure Polar products, meters, and webhooks.
 
-For each new app you'll need to define:
+For each new app you will typically need:
 
 - Subscription products for each plan tier
 - Subscription products for recurring add-ons
@@ -251,25 +280,19 @@ For each new app you'll need to define:
 - Meters for metered resources
 - Webhooks pointing to `https://billing.apollodeploy.com/webhooks/polar`
 
-See the Billing-Plan-Setup README for detailed instructions on catalog creation and environment management (sandbox vs production).
-
 ### Step 3: Register the calling service for OAuth
 
-1. Register an OAuth client on the platform:
-   ```bash
-   cd apps/platform && bun run oauth:register-clients
-   ```
-
+1. Register an OAuth client on the platform
 2. Add the returned `client_id` to billing's `OAUTH_SERVICE_CLIENT_IDS`
+3. Configure the calling app:
 
-3. Configure the calling app's environment:
-   ```bash
-   PLATFORM_CLIENT_ID=<client_id>
-   PLATFORM_CLIENT_SECRET=<client_secret>
-   PLATFORM_URL=http://platform:3000
-   PLATFORM_AUDIENCE_URL=https://api.platform.apollodeploy.com
-   BILLING_BASE_URL=https://billing.apollodeploy.com
-   ```
+```bash
+PLATFORM_CLIENT_ID=<client_id>
+PLATFORM_CLIENT_SECRET=<client_secret>
+PLATFORM_URL=http://platform:3000
+PLATFORM_AUDIENCE_URL=https://api.platform.apollodeploy.com
+BILLING_BASE_URL=https://billing.apollodeploy.com
+```
 
 ### Step 4: Install the SDK in your app
 
@@ -374,12 +397,12 @@ val entitlements = billingProvider.get().billingEntitlements.getBillingEntitleme
 ### Checklist for new apps
 
 - [ ] `<App>PlanCatalog.kt` created
-- [ ] `<App>BillingConfig.kt` created
-- [ ] App config values added to `AppConfig.kt` and `application.conf`
+- [ ] `<App>BillingConfig.kt` created with `resolvePlanAndUsage`
+- [ ] App-specific config added under nested `AppConfig` / `application.conf` if needed
 - [ ] App registered in `AppAssembly.kt`
 - [ ] `platform_apps` row seeded
-- [ ] OAuth client registered, `client_id` added to `OAUTH_SERVICE_CLIENT_IDS`
-- [ ] Polar products, meters, and webhooks configured via [Billing-Plan-Setup](https://github.com/Apollo-Deploy/Billing-Plan-Setup)
+- [ ] OAuth client registered; `client_id` added to `OAUTH_SERVICE_CLIENT_IDS`
+- [ ] Polar products, meters, and webhooks configured
 - [ ] SDK installed in app backend
 - [ ] Enforcement calls added to write paths
 - [ ] Usage reporting added after successful operations
@@ -398,7 +421,7 @@ make sdk-codeartifact # refresh CodeArtifact Maven token
 make sdk-manifest     # export Tesseract manifest only
 ```
 
-See [docs/sdk-generation.md](docs/sdk-generation.md) and [docs/sdk-readme.md](docs/sdk-readme.md) for detailed publishing instructions.
+See [docs/sdk-generation.md](docs/sdk-generation.md) and [docs/sdk-readme.md](docs/sdk-readme.md) for publishing details.
 
 ---
 
@@ -407,12 +430,25 @@ See [docs/sdk-generation.md](docs/sdk-generation.md) and [docs/sdk-readme.md](do
 | Endpoint | Auth | Description |
 |----------|------|-------------|
 | `GET /health` | None | Health check |
+| `GET /docs` · `GET /docs/openapi.json` | None | Scalar docs / OpenAPI spec |
 | `GET /billing/catalog/{app}` | None (public) | Product catalog for plan selectors |
-| `POST /internal/billing/enforce` | Service JWT | Enforce quota/feature/meter check |
+| `POST /internal/billing/enforce` | Service JWT | Enforce quota / feature / meter check |
 | `GET /internal/billing/entitlements/{app}/{org}` | Service JWT | Entitlement snapshot |
 | `POST /internal/billing/checkout` | Service JWT | Create checkout session |
 | `POST /internal/billing/usage/ingest` | Service JWT | Report metered usage |
-| `GET/PUT /internal/billing/customer/*` | Service JWT | Customer billing profile |
+| `POST /internal/billing/customer/provision` | Service JWT | Provision Polar customer for an org |
+| `PATCH /internal/billing/customer/billing-info` | Service JWT | Update billing profile |
+| `GET /internal/billing/customer/payment-methods` | Service JWT | List payment methods |
+| `DELETE /internal/billing/customer/payment-methods/{id}` | Service JWT | Delete payment method |
+| `PATCH /internal/billing/customer/payment-methods/{id}/default` | Service JWT | Set default payment method |
+| `POST /internal/billing/customer/portal` | Service JWT | Open customer portal |
+| `POST /internal/billing/customer/session` | Service JWT | Create customer session |
+| `GET /internal/billing/subscriptions` | Service JWT | Active subscriptions grouped by app |
+| `POST /internal/billing/subscriptions/{id}/cancel` | Service JWT | Cancel at period end |
+| `GET /internal/billing/invoices` | Service JWT | Paginated invoices |
+| `GET /internal/billing/invoices/{id}` | Service JWT | Invoice detail |
+| `GET /internal/billing/invoices/{id}/meter-usage` | Service JWT | Meter usage for invoice period |
+| `POST /internal/billing/invoices/{id}/invoice` | Service JWT | Generate Polar PDF invoice URL |
 | `POST /webhooks/polar` | Polar signature | Polar webhook receiver |
 
 ---
@@ -421,25 +457,31 @@ See [docs/sdk-generation.md](docs/sdk-generation.md) and [docs/sdk-readme.md](do
 
 ```
 src/main/kotlin/com/apollodeploy/billing/
-├── BillingApplication.kt          # Entry point, Ktor configuration
-├── bootstrap/AppAssembly.kt       # Dependency wiring, app registration
-├── core/                          # Shared domain (enforcer, config, registry)
+├── BillingApplication.kt          # Entry point, Ktor plugins, routes
+├── bootstrap/AppAssembly.kt       # Composition root
+├── core/                          # Enforcer, helpers, registry, domain types
 ├── feature/
 │   ├── catalog/                   # Public product catalog
 │   ├── checkout/                  # Checkout session creation
-│   ├── customer/                  # Customer billing profile
+│   ├── customer/                  # Customer billing profile / portal
+│   ├── docs/                      # OpenAPI + Scalar
 │   ├── enforce/                   # Billing enforcement
 │   ├── entitlements/              # Entitlement resolution
 │   ├── health/                    # Health endpoint
+│   ├── invoices/                  # Invoice list, detail, PDF generation
 │   ├── signal/                    # Signal app (reference implementation)
+│   ├── subscriptions/             # Active subscriptions + cancel
 │   ├── usage/                     # Usage ingestion
 │   └── webhook/                   # Polar webhook handling
-├── infrastructure/
-│   ├── config/AppConfig.kt        # Environment configuration
-│   ├── iam/                       # OAuth M2M verification
-│   ├── persistence/               # Database pool management
-│   └── validation/                # Input validation
-└── tesseract/                     # SDK generation annotations
+└── infrastructure/
+    ├── config/AppConfig.kt        # Nested typed configuration
+    ├── iam/                       # OAuth M2M verification
+    ├── persistence/               # Hikari pools + subscription repo
+    ├── polar/                     # PolarClient + webhook handler
+    │   └── model/                 # Polar DTOs / call results
+    ├── redis/                     # RedisPool + Polar state cache
+    ├── validation/                # Redirect URL validation
+    └── webhook/                   # Webhook deduplication
 ```
 
 ---
