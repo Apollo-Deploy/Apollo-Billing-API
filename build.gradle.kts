@@ -107,7 +107,7 @@ tasks.test {
 }
 
 tasks.shadowJar {
-    archiveClassifier.set("")
+    archiveFileName.set("app.jar")
     mergeServiceFiles()
     manifest {
         attributes["Main-Class"] = application.mainClass.get()

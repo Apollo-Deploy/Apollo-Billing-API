@@ -110,16 +110,7 @@ RUN --mount=type=cache,target=/root/.gradle/caches,sharing=locked \
             --quiet \
             -x test; \
     fi; \
-    jar_path="$(find build/libs \
-        -maxdepth 1 \
-        -type f \
-        -name 'apollo-billing-*.jar' \
-        ! -name '*-plain.jar' \
-        -print \
-        -quit)"; \
-    test -n "${jar_path}"; \
-    test -s "${jar_path}"; \
-    cp "${jar_path}" build/libs/app.jar
+    test -s build/libs/app.jar
 
 
 # ── Development image ────────────────────────────────────────────────────────
@@ -245,10 +236,7 @@ COPY --from=jlink \
 
 WORKDIR /app
 
-COPY --from=build \
-    --chown=apollo:apollo \
-    /build/build/libs/app.jar \
-    /app/app.jar
+COPY --from=build --chown=apollo:apollo /build/build/libs/app.jar /app/app.jar
 
 USER apollo
 

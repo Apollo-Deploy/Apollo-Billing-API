@@ -542,6 +542,7 @@ const methods = await billing.billingCustomer.listCustomerPaymentMethods({
   page: 1,
   limit: 10,
 });
+// methods.paymentMethods.items[].is_default marks the default card
 ```
 
 Delete a saved payment method:
