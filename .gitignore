@@ -1,45 +1,254 @@
+# =============================================================================
+# Apollo Billing API — .gitignore
+# =============================================================================
+# Extensive ignore set for secrets, Gradle/Kotlin/JVM, generated SDKs,
+# Docker/nginx locals, JetBrains / VS Code / Cursor, OS junk, and tooling caches.
+# =============================================================================
+
 # ── Secrets / local config ───────────────────────────────────────────────────
 .env
 .env.*
 !.env.example
+!.env*.example
+*.pem
+*.key
+*.p12
+*.jks
+*.keystore
+credentials.json
+secrets.json
+**/secrets/**
+!**/secrets/.gitkeep
 
-# Local Ktor config override (copy of application.local.conf.example)
+# Local Ktor / Typesafe config overrides (may contain secrets)
 src/main/resources/application.local.conf
 src/test/resources/application.local.conf
+**/application-local.conf
+**/application.local*.conf
 
 # ── Gradle / build ───────────────────────────────────────────────────────────
 .gradle/
 build/
+**/build/
+!src/**/build/
 bin/
+out/
 !gradle/wrapper/gradle-wrapper.jar
 !gradle/wrapper/gradle-wrapper.properties
+!**/gradle-wrapper.jar
+!**/gradle-wrapper.properties
 
-# Gradle configuration cache
+# Gradle configuration / build caches
 .cache/
 .configuration-cache/
+.gradle-configuration-cache/
+.gradletasknamecache
+gradle-app.setting
 
-# ── Kotlin ───────────────────────────────────────────────────────────────────
+# ── Kotlin / JVM ─────────────────────────────────────────────────────────────
 .kotlin/
 *.class
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+!**/gradle-wrapper.jar
+*.war
+*.ear
+*.nar
+*.zip
+*.tar
+*.tar.gz
+*.rar
 
-# ── Generated SDKs ───────────────────────────────────────────────────────────
+# HotSpot / JVM crash & heap dumps
+hs_err_pid*
+replay_pid*
+*.hprof
+*.hdump
+java_pid*.hprof
+**/heapdump*
+
+# JRebel / hot reload
+*.rebel.xml
+.jrebel/
+
+# ── Generated SDKs (Tesseract) ───────────────────────────────────────────────
 sdk/
+sdk/**
+*.tgz
 
-# ── Generated OpenAPI spec ───────────────────────────────────────────────────
+# ── Generated OpenAPI / manifests / reports ──────────────────────────────────
 docs/openapi.json
+**/openapi.generated.json
+build/tesseract/
+**/tesseract-manifest*.json
+**/billing-manifest.json
 
-# ── nginx TLS material ───────────────────────────────────────────────────────
-nginx/certs/*
-!nginx/certs/.gitkeep
-
-# ── OS / editor ──────────────────────────────────────────────────────────────
-.DS_Store
-**/.DS_Store
-*.log
-.idea/
-*.iml
-.vscode/
-
-# ── Test output ──────────────────────────────────────────────────────────────
+# Test / coverage reports (also covered by build/, kept explicit)
 build/reports/
 build/test-results/
+build/tmp/
+**/jacoco/
+**/coverage/
+*.exec
+test-output/
+.kotest/
+
+# ── Docker / Compose local overrides ─────────────────────────────────────────
+docker-compose.override.yml
+docker-compose.*.local.yml
+compose.override.yml
+.docker/
+*.dockerignore.local
+
+# ── nginx TLS / local reverse-proxy material ─────────────────────────────────
+nginx/certs/*
+!nginx/certs/.gitkeep
+nginx/certs/**/*.crt
+nginx/certs/**/*.key
+nginx/certs/**/*.pem
+nginx/**/*.local.conf
+
+# ── OS ───────────────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+**/.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.swp
+*.swo
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ── Logs / temp ──────────────────────────────────────────────────────────────
+*.log
+*.log.*
+logs/
+**/logs/
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+*.backup
+*.old
+*.orig
+*.rej
+
+# ── IntelliJ / JetBrains ─────────────────────────────────────────────────────
+.idea/
+*.iws
+*.ipr
+*.iml
+.idea_modules/
+atlassian-ide-plugin.xml
+com_crashlytics_export_strings.xml
+crashlytics.properties
+crashlytics-build.properties
+fabric.properties
+
+# Optional shared IDE snippets (uncomment if the team commits them)
+# !.idea/codeStyles/
+# !.idea/codeStyles/**
+# !.idea/runConfigurations/
+# !.idea/runConfigurations/**
+# !.idea/inspectionProfiles/
+# !.idea/inspectionProfiles/**
+
+# ── VS Code ──────────────────────────────────────────────────────────────────
+.vscode/
+.history/
+.ionide/
+*.code-workspace
+
+# ── Cursor / AI tooling ──────────────────────────────────────────────────────
+.cursor/
+.cursorignore
+.claude/
+.codex/
+.kiro/
+.kiro/**
+.agent/
+.agents/
+.aider*
+.continue/
+.windsurf/
+
+# ── Node (SDK publish / Tesseract helpers) ───────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+.npm/
+.yarn/
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+.turbo/
+.next/
+dist/
+.eslintcache
+.stylelintcache
+*.tsbuildinfo
+
+# ── Python / misc local scripts ──────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+ENV/
+.envrc
+.direnv/
+
+# ── Terraform leftovers (if run from this tree) ──────────────────────────────
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraform.tfstate.lock.info
+
+# ── Coverage / profiling / benchmarks ────────────────────────────────────────
+*.lcov
+*.coverage
+htmlcov/
+.nyc_output/
+*.prof
+*.jfr
+async-profiler/
+
+# ── Package / archive noise ──────────────────────────────────────────────────
+*.dmg
+*.iso
+*.7z
+*.cab
+*.msi
+*.msix
+*.appx
+
+# ── Local notes / scratch ────────────────────────────────────────────────────
+TODO.local.md
+NOTES.local.md
+*.local.md
+scratch/
+.scratch/
+tmp-scratch/
