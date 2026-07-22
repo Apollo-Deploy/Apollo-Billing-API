@@ -1,0 +1,35 @@
+{
+  "id": "cus_01HQXYZ",
+  "email": "billing@example.com",
+  "external_id": "org_abc123",
+  "active_subscriptions": [
+    {
+      "id": "sub_01HQXYZ",
+      "product_id": "prod_signal_pro",
+      "status": "active",
+      "amount": 2900,
+      "currency": "usd",
+      "recurring_interval": "month",
+      "current_period_end": "2026-08-22T00:00:00Z",
+      "cancel_at_period_end": false
+    }
+  ],
+  "granted_benefits": [
+    {
+      "id": "grant_01",
+      "benefit_id": "ben_feature_flags",
+      "benefit_metadata": {
+        "maxUploadSizeMb": "100"
+      }
+    }
+  ],
+  "active_meters": [
+    {
+      "id": "cm_01",
+      "meter_id": "meter_automation_runs",
+      "consumed_units": 42,
+      "credited_units": 1000,
+      "balance": 958
+    }
+  ]
+}

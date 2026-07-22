@@ -7,6 +7,10 @@ import com.apollodeploy.billing.infrastructure.audit.AuditLogClient
 import com.apollodeploy.billing.infrastructure.audit.AuditRiskLevel
 import com.apollodeploy.billing.infrastructure.audit.AuditStatus
 import com.apollodeploy.billing.infrastructure.persistence.SubscriptionRepo
+import com.apollodeploy.billing.infrastructure.polar.model.PolarCustomerState
+import com.apollodeploy.billing.infrastructure.polar.model.PolarOrderPayload
+import com.apollodeploy.billing.infrastructure.polar.model.PolarSubscriptionPayload
+import com.apollodeploy.billing.infrastructure.polar.model.PolarWebhookEvent
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromJsonElement
 import org.slf4j.LoggerFactory
@@ -124,6 +128,12 @@ class PolarWebhookHandler(
                 appSlug = product.appSlug,
                 status = sub.status,
                 quantity = 1,
+                renewalAt = sub.currentPeriodEnd,
+                cancelAtPeriodEnd = sub.cancelAtPeriodEnd,
+                endsAt = sub.endsAt ?: if (sub.cancelAtPeriodEnd) sub.currentPeriodEnd else null,
+                amountCents = sub.amount,
+                currency = sub.currency,
+                recurringInterval = sub.recurringInterval,
             )
             appRegistry.get(product.appSlug)?.invalidate(orgId)
 
@@ -199,6 +209,12 @@ class PolarWebhookHandler(
             appSlug = product.appSlug,
             status = payload.status,
             quantity = payload.quantity ?: 1,
+            renewalAt = payload.currentPeriodEnd,
+            cancelAtPeriodEnd = payload.cancelAtPeriodEnd,
+            endsAt = payload.endsAt ?: if (payload.cancelAtPeriodEnd) payload.currentPeriodEnd else null,
+            amountCents = payload.amount,
+            currency = payload.currency,
+            recurringInterval = payload.recurringInterval,
         )
 
         // Invalidate entitlement cache so the next enforce call gets fresh data

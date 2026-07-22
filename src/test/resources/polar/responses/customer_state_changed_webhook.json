@@ -1,0 +1,11 @@
+{
+  "type": "customer.state_changed",
+  "data": {
+    "id": "cus_01HQXYZ",
+    "email": "billing@example.com",
+    "external_id": "org_abc123",
+    "active_subscriptions": [],
+    "granted_benefits": [],
+    "active_meters": []
+  }
+}

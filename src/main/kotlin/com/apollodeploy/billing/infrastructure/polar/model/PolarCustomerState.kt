@@ -1,4 +1,4 @@
-package com.apollodeploy.billing.infrastructure.polar
+package com.apollodeploy.billing.infrastructure.polar.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -31,6 +31,12 @@ data class CustomerStateSubscription(
     val id: String,
     @SerialName("product_id") val productId: String,
     val status: String,
+    val amount: Int? = null,
+    val currency: String? = null,
+    @SerialName("recurring_interval") val recurringInterval: String? = null,
+    @SerialName("current_period_end") val currentPeriodEnd: String? = null,
+    @SerialName("cancel_at_period_end") val cancelAtPeriodEnd: Boolean = false,
+    @SerialName("ends_at") val endsAt: String? = null,
 )
 
 /**
