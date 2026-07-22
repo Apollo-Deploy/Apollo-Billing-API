@@ -90,17 +90,17 @@ test-watch:
 # ── Terraform (local dev) ─────────────────────────────────────────────────────
 #
 # The full local stack (infra + platform + billing + signal) is managed by
-# Terraform. Run these from infra/terraform/environments/local/.
+# Terraform under APIs/infra/terraform/local/.
 
 .PHONY: tf-up tf-down tf-logs
 
 ## tf-up         — Apply Terraform to start/update the local stack
 tf-up:
-	@cd ../../infra/terraform/environments/local && terraform apply -auto-approve
+	@cd ../infra/terraform/local && terraform apply -auto-approve
 
 ## tf-down       — Destroy the local Terraform stack
 tf-down:
-	@cd ../../infra/terraform/environments/local && terraform destroy -auto-approve
+	@cd ../infra/terraform/local && terraform destroy -auto-approve
 
 ## tf-logs       — Tail billing container logs
 tf-logs:
