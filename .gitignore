@@ -100,13 +100,8 @@ compose.override.yml
 .docker/
 *.dockerignore.local
 
-# ── nginx TLS / local reverse-proxy material ─────────────────────────────────
-nginx/certs/*
-!nginx/certs/.gitkeep
-nginx/certs/**/*.crt
-nginx/certs/**/*.key
-nginx/certs/**/*.pem
-nginx/**/*.local.conf
+# ── nginx (owned by platform edge; not part of this service) ─────────────────
+nginx/
 
 # ── OS ───────────────────────────────────────────────────────────────────────
 .DS_Store

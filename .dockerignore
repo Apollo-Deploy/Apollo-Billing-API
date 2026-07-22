@@ -10,7 +10,6 @@ src/main/resources/application.local.conf
 docs/
 plans/
 scripts/
-nginx/
 
 # VCS / IDE
 .git/
