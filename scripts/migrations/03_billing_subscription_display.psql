@@ -1,0 +1,28 @@
+-- =============================================================================
+-- App:       apollo-billing-api
+-- Migration: 03_billing_subscription_display.psql
+--
+-- Adds Polar subscription display fields for client-facing subscription lists.
+-- =============================================================================
+
+BEGIN;
+
+ALTER TABLE billing_subscriptions
+    ADD COLUMN IF NOT EXISTS cancel_at_period_end boolean NOT NULL DEFAULT false,
+    ADD COLUMN IF NOT EXISTS ends_at timestamptz,
+    ADD COLUMN IF NOT EXISTS amount_cents int,
+    ADD COLUMN IF NOT EXISTS currency varchar(3),
+    ADD COLUMN IF NOT EXISTS recurring_interval varchar(16);
+
+COMMENT ON COLUMN billing_subscriptions.cancel_at_period_end IS
+    'True when the subscription is scheduled to cancel at renewal_at / current_period_end.';
+COMMENT ON COLUMN billing_subscriptions.ends_at IS
+    'When subscription access ends (Polar ends_at). Set when cancel_at_period_end is true.';
+COMMENT ON COLUMN billing_subscriptions.amount_cents IS
+    'Recurring charge amount in cents from Polar (excludes one-off usage).';
+COMMENT ON COLUMN billing_subscriptions.currency IS
+    'ISO currency for amount_cents (Polar subscription currency).';
+COMMENT ON COLUMN billing_subscriptions.recurring_interval IS
+    'Billing cadence from Polar (e.g. month, year).';
+
+COMMIT;

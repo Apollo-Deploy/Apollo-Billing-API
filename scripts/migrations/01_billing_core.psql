@@ -93,4 +93,8 @@ COMMENT ON COLUMN billing_subscriptions.polar_subscription_id IS
 COMMENT ON COLUMN billing_subscriptions.quantity IS
     'Subscription seat/unit quantity. Relevant for per-seat add-ons. Defaults to 1.';
 
+-- API role grants (billing_app = R/W; billing_superuser = read for cross-DB tooling)
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE billing_customers, billing_subscriptions TO billing_app;
+GRANT SELECT ON TABLE billing_customers, billing_subscriptions TO billing_superuser;
+
 COMMIT;

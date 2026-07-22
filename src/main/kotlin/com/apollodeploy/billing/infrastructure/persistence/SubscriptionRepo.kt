@@ -38,18 +38,36 @@ class SubscriptionRepo(
     private val SQL_UPSERT_SUBSCRIPTION =
         """
         INSERT INTO billing_subscriptions
-            (app_id, customer_id, polar_subscription_id, polar_product_id, status, quantity, created_at, updated_at)
-        SELECT a.id, c.customer_id, ?, ?, ?, ?, now(), now()
+            (app_id, customer_id, polar_subscription_id, polar_product_id, status, quantity,
+             renewal_at, cancel_at_period_end, ends_at, amount_cents, currency, recurring_interval,
+             created_at, updated_at)
+        SELECT a.id, c.customer_id, ?, ?, ?, ?, ?::timestamptz, ?, ?::timestamptz, ?, ?, ?,
+               now(), now()
         FROM platform_apps a
         JOIN billing_customers c ON c.app_id = a.id AND c.external_ref = ?
         WHERE a.slug = ?
         ON CONFLICT (polar_subscription_id)
-            DO UPDATE SET app_id           = EXCLUDED.app_id,
-                          customer_id      = EXCLUDED.customer_id,
-                          polar_product_id = EXCLUDED.polar_product_id,
-                          status           = EXCLUDED.status,
-                          quantity         = EXCLUDED.quantity,
-                          updated_at       = now()
+            DO UPDATE SET app_id                = EXCLUDED.app_id,
+                          customer_id           = EXCLUDED.customer_id,
+                          polar_product_id      = EXCLUDED.polar_product_id,
+                          status                = EXCLUDED.status,
+                          quantity              = EXCLUDED.quantity,
+                          renewal_at            = EXCLUDED.renewal_at,
+                          cancel_at_period_end  = EXCLUDED.cancel_at_period_end,
+                          ends_at               = EXCLUDED.ends_at,
+                          amount_cents          = EXCLUDED.amount_cents,
+                          currency              = EXCLUDED.currency,
+                          recurring_interval    = EXCLUDED.recurring_interval,
+                          updated_at            = now()
+        """.trimIndent()
+
+    private val SQL_MARK_CANCEL_AT_PERIOD_END =
+        """
+        UPDATE billing_subscriptions
+        SET cancel_at_period_end = true,
+            ends_at = COALESCE(?::timestamptz, ends_at, renewal_at),
+            updated_at = now()
+        WHERE polar_subscription_id = ?
         """.trimIndent()
 
     private val SQL_REVOKE_SUBSCRIPTION =
@@ -112,12 +130,41 @@ class SubscriptionRepo(
         appSlug: String,
         status: String,
         quantity: Int = 1,
+        renewalAt: String? = null,
+        cancelAtPeriodEnd: Boolean = false,
+        endsAt: String? = null,
+        amountCents: Int? = null,
+        currency: String? = null,
+        recurringInterval: String? = null,
     ) {
         db.withConnection { conn ->
             conn.executeUpdate(
                 SQL_UPSERT_SUBSCRIPTION,
-                listOf(polarSubscriptionId, polarProductId, status, quantity, orgId, appSlug),
+                listOf(
+                    polarSubscriptionId,
+                    polarProductId,
+                    status,
+                    quantity,
+                    renewalAt,
+                    cancelAtPeriodEnd,
+                    endsAt,
+                    amountCents,
+                    currency,
+                    recurringInterval,
+                    orgId,
+                    appSlug,
+                ),
             )
+        }
+    }
+
+    /** Marks a subscription as scheduled to cancel at period end after a successful Polar cancel. */
+    fun markCancelAtPeriodEnd(
+        polarSubscriptionId: String,
+        endsAt: String? = null,
+    ) {
+        db.withConnection { conn ->
+            conn.executeUpdate(SQL_MARK_CANCEL_AT_PERIOD_END, listOf(endsAt, polarSubscriptionId))
         }
     }
 

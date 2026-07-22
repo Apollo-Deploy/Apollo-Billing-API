@@ -1,0 +1,17 @@
+-- =============================================================================
+-- App:       apollo-billing-api
+-- Migration: 02_billing_subscription_renewal.psql
+--
+-- Adds renewal_at to billing_subscriptions so subscription listings can expose
+-- the next billing/renewal date without calling Polar on every read.
+-- =============================================================================
+
+BEGIN;
+
+ALTER TABLE billing_subscriptions
+    ADD COLUMN IF NOT EXISTS renewal_at timestamptz;
+
+COMMENT ON COLUMN billing_subscriptions.renewal_at IS
+    'End of the current billing period (Polar current_period_end). Used as renewal date.';
+
+COMMIT;
