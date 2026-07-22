@@ -2,7 +2,7 @@
 # Apollo Billing API — .gitignore
 # =============================================================================
 # Extensive ignore set for secrets, Gradle/Kotlin/JVM, generated SDKs,
-# Docker/nginx locals, JetBrains / VS Code / Cursor, OS junk, and tooling caches.
+# Docker locals, JetBrains / VS Code / Cursor, OS junk, and tooling caches.
 # =============================================================================
 
 # ── Secrets / local config ───────────────────────────────────────────────────
