@@ -2,7 +2,7 @@ package com.apollodeploy.billing.feature.webhook.api
 
 import com.apollodeploy.billing.feature.common.api.BillingApiErrorResponse
 import com.apollodeploy.billing.feature.webhook.domain.PolarWebhookResponse
-import com.apollodeploy.billing.infrastructure.polar.PolarWebhookEvent
+import com.apollodeploy.billing.infrastructure.polar.model.PolarWebhookEvent
 import com.apollodeploy.tesseract.sdk
 import com.apollodeploy.tesseract.sdkDomain
 import io.github.smiley4.ktoropenapi.post

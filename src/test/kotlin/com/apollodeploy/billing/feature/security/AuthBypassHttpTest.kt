@@ -225,6 +225,12 @@ class AuthBypassHttpTest {
     }
 
     @Test
+    fun `url validator - allowlisted apollodeploy local host passes`() {
+        assertNull(UrlValidator.validateRedirectUrl("https://account.apollodeploy.local/billing"))
+        assertNull(UrlValidator.validateRedirectUrl("https://app.apollodeploy.local/return"))
+    }
+
+    @Test
     fun `url validator - dot-internal hostname returns error`() {
         assertNotNull(UrlValidator.validateRedirectUrl("https://billing.internal/callback"))
     }

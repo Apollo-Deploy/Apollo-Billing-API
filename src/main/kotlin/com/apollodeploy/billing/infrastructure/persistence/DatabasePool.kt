@@ -1,6 +1,8 @@
 package com.apollodeploy.billing.infrastructure.persistence
 
 import com.apollodeploy.billing.infrastructure.config.AppConfig
+import com.apollodeploy.billing.infrastructure.config.DatabaseConfig
+import com.typesafe.config.ConfigFactory
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import org.slf4j.LoggerFactory
@@ -18,31 +20,33 @@ class DatabasePool private constructor(
 
     companion object {
         fun create(): DatabasePool =
-            create(
-                jdbcUrl = "jdbc:postgresql://${AppConfig.platformDbHost}:${AppConfig.platformDbPort}/${AppConfig.platformDbName}${sslQuery(AppConfig.platformDbEffectiveSslmode)}",
-                username = AppConfig.platformDbUser,
-                password = AppConfig.platformDbPassword,
-                maximumPoolSize = AppConfig.platformDbPoolMaxSize,
-                idleTimeoutMs = AppConfig.platformDbIdleTimeoutMs,
-                connectionTimeoutMs = AppConfig.platformDbConnectionTimeoutMs,
-                statementTimeoutMs = AppConfig.platformDbStatementTimeoutMs,
-            )
+            create(AppConfig.platformDatabase)
 
         /**
          * Read-only pool — billing_superuser on the platform database.
          * Used for SELECT on apikey. Shares the platform DB host/name but uses
          * the billing_superuser role instead of billing_app.
          */
-        fun createPlatformReader(): DatabasePool =
-            create(
-                jdbcUrl = "jdbc:postgresql://${AppConfig.platformDbHost}:${AppConfig.platformDbPort}/${AppConfig.platformDbName}${sslQuery(AppConfig.platformDbEffectiveSslmode)}",
-                username = AppConfig.platformReaderDbUser,
-                password = AppConfig.platformReaderDbPassword,
-                maximumPoolSize = AppConfig.platformReaderDbPoolMaxSize,
-                idleTimeoutMs = AppConfig.platformReaderDbIdleTimeoutMs,
-                connectionTimeoutMs = AppConfig.platformReaderDbConnectionTimeoutMs,
-                statementTimeoutMs = AppConfig.platformReaderDbStatementTimeoutMs,
+        fun createPlatformReader(): DatabasePool {
+            val platform = AppConfig.platformDatabase
+            val pool = AppConfig.platformReaderDatabase
+            val readerCredentials =
+                ConfigFactory
+                    .load()
+                    .getConfig("apollo-billing.platform-reader-db")
+
+            return create(
+                jdbcUrl =
+                    "jdbc:postgresql://${platform.host}:${platform.port}/${platform.name}" +
+                        sslQuery(platform.sslMode),
+                username = readerCredentials.getString("user"),
+                password = readerCredentials.getString("password"),
+                maximumPoolSize = pool.maxSize,
+                idleTimeoutMs = pool.idleTimeoutMs,
+                connectionTimeoutMs = pool.connectionTimeoutMs,
+                statementTimeoutMs = pool.statementTimeoutMs,
             )
+        }
 
         /**
          * Read-only pool — billing_superuser on the signal database.
@@ -53,15 +57,7 @@ class DatabasePool private constructor(
          */
         fun createSignal(): DatabasePool? =
             try {
-                create(
-                    jdbcUrl = "jdbc:postgresql://${AppConfig.signalDbHost}:${AppConfig.signalDbPort}/${AppConfig.signalDbName}${sslQuery(AppConfig.signalDbEffectiveSslmode)}",
-                    username = AppConfig.signalDbUser,
-                    password = AppConfig.signalDbPassword,
-                    maximumPoolSize = AppConfig.signalDbPoolMaxSize,
-                    idleTimeoutMs = AppConfig.signalDbIdleTimeoutMs,
-                    connectionTimeoutMs = AppConfig.signalDbConnectionTimeoutMs,
-                    statementTimeoutMs = AppConfig.signalDbStatementTimeoutMs,
-                )
+                create(AppConfig.signalDatabase)
             } catch (e: Exception) {
                 LoggerFactory
                     .getLogger(DatabasePool::class.java)
@@ -82,6 +78,19 @@ class DatabasePool private constructor(
          * handlers so the pool should never be called.
          */
         fun createStub(): DatabasePool = DatabasePool(dataSource = null).also { it.close() }
+
+        private fun create(config: DatabaseConfig): DatabasePool =
+            create(
+                jdbcUrl =
+                    "jdbc:postgresql://${config.host}:${config.port}/${config.name}" +
+                        sslQuery(config.sslMode),
+                username = config.user,
+                password = config.password,
+                maximumPoolSize = config.pool.maxSize,
+                idleTimeoutMs = config.pool.idleTimeoutMs,
+                connectionTimeoutMs = config.pool.connectionTimeoutMs,
+                statementTimeoutMs = config.pool.statementTimeoutMs,
+            )
 
         fun create(
             jdbcUrl: String,

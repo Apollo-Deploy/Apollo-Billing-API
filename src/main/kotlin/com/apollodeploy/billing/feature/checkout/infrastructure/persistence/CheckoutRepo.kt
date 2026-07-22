@@ -2,7 +2,7 @@ package com.apollodeploy.billing.feature.checkout.infrastructure.persistence
 
 import com.apollodeploy.billing.core.AppRegistry
 import com.apollodeploy.billing.core.BillingProduct
-import com.apollodeploy.billing.infrastructure.polar.PolarCheckoutSession
+import com.apollodeploy.billing.infrastructure.polar.model.PolarCheckoutSession
 import com.apollodeploy.billing.infrastructure.polar.PolarClient
 
 class CheckoutRepo(

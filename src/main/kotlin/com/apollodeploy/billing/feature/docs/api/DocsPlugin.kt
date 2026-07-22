@@ -3,46 +3,61 @@ package com.apollodeploy.billing.feature.docs.api
 import io.github.smiley4.ktoropenapi.OpenApiPlugin
 import io.github.smiley4.ktoropenapi.config.OpenApiPluginConfig
 import io.ktor.http.ContentType
-import io.ktor.server.response.*
-import io.ktor.server.routing.*
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.*
-import java.util.concurrent.atomic.AtomicReference
+import io.ktor.server.application.Application
+import io.ktor.server.response.respondBytes
+import io.ktor.server.routing.Route
+import io.ktor.server.routing.get
+
+private val JsonContentType = ContentType.Application.Json
+
+private val HtmlContentType = ContentType.Text.Html
 
 /**
- * Apollo Billing — Docs module (OpenAPI spec + Scalar API Reference).
- *
- * Serves:
- *   GET /docs              → Scalar interactive API reference
- *   GET /docs/openapi.json → live OpenAPI 3.0 spec
+ * Serves the OpenAPI specification and Scalar API reference.
  */
 fun Route.docsRoutes() {
-    val specCache = AtomicReference<String?>(null)
+    val specCache = OpenApiSpecCache()
 
     get("/docs/openapi.json") {
-        val spec =
-            specCache.get() ?: run {
-                OpenApiPlugin.generateOpenApiSpecs(application)
-                val generated =
-                    prettyJson.encodeToString(
-                        Json.parseToJsonElement(
-                            OpenApiPlugin.getOpenApiSpec(OpenApiPluginConfig.DEFAULT_SPEC_ID),
-                        ),
-                    )
-                generated.also { specCache.set(it) }
-            }
-        call.respondText(spec, ContentType.Application.Json)
+        call.respondBytes(
+            bytes = specCache.get(call.application),
+            contentType = JsonContentType,
+        )
     }
 
     get("/docs") {
-        call.respondText(scalarHtml, ContentType.Text.Html)
+        call.respondBytes(
+            bytes = SCALAR_HTML_BYTES,
+            contentType = HtmlContentType,
+        )
     }
 }
 
-private val prettyJson = Json { prettyPrint = true }
+private class OpenApiSpecCache {
+    @Volatile
+    private var cached: ByteArray? = null
+
+    fun get(application: Application): ByteArray {
+        cached?.let { return it }
+
+        return synchronized(this) {
+            cached ?: generate(application).also {
+                cached = it
+            }
+        }
+    }
+
+    private fun generate(application: Application): ByteArray {
+        OpenApiPlugin.generateOpenApiSpecs(application)
+
+        return OpenApiPlugin
+            .getOpenApiSpec(OpenApiPluginConfig.DEFAULT_SPEC_ID)
+            .encodeToByteArray()
+    }
+}
 
 // language=HTML
-private val scalarHtml =
+private const val SCALAR_HTML =
     """
 <!doctype html>
 <html lang="en">
@@ -58,14 +73,22 @@ private val scalarHtml =
       data-configuration='{
         "theme": "saturn",
         "layout": "modern",
-        "defaultHttpClient": { "targetKey": "node", "clientKey": "fetch" },
+        "defaultHttpClient": {
+          "targetKey": "node",
+          "clientKey": "fetch"
+        },
         "hideModels": true,
         "hideTestRequestButton": true,
         "searchHotKey": "k",
-        "metaData": { "title": "Apollo Billing API Reference" }
+        "metaData": {
+          "title": "Apollo Billing API Reference"
+        }
       }'
     ></script>
     <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
   </body>
 </html>
-    """.trimIndent()
+    """
+
+private val SCALAR_HTML_BYTES =
+    SCALAR_HTML.trimIndent().encodeToByteArray()

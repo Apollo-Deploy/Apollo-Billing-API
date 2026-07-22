@@ -23,7 +23,7 @@ class UsageIngestRepo(
         if (idempotencyKey != null && redis != null) {
             val redisKey = "billing:usage:idem:$orgId:$eventKey:$idempotencyKey"
             val isNew = redis.setNx(redisKey, "1", IDEMPOTENCY_TTL_SECONDS)
-            if (!isNew) {
+            if (isNew == false) {
                 return true // Already processed — return success without re-ingesting
             }
         }

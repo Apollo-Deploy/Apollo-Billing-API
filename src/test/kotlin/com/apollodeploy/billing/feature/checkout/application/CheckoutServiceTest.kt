@@ -5,7 +5,7 @@ import com.apollodeploy.billing.core.BillingProductKind
 import com.apollodeploy.billing.feature.checkout.domain.CreateCheckoutRequest
 import com.apollodeploy.billing.feature.checkout.domain.CreateCheckoutResult
 import com.apollodeploy.billing.feature.checkout.infrastructure.persistence.CheckoutRepo
-import com.apollodeploy.billing.infrastructure.polar.PolarCheckoutSession
+import com.apollodeploy.billing.infrastructure.polar.model.PolarCheckoutSession
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk

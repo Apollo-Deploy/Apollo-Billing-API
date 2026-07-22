@@ -340,7 +340,7 @@ class SignalBillingConfig(
             dbUsage +
                 buildMap {
                     meterBalance(SIGNAL_EMAIL_METER_ID)?.let { put("monthlySends", it) }
-                    meterBalance(AppConfig.signalEmailReceivedMeterId)?.let {
+                    meterBalance(AppConfig.signal.emailReceivedMeterId)?.let {
                         put("inboundReceivedBalance", it)
                     }
                     meterBalance(SIGNAL_AUTOMATION_RUN_METER_ID)?.let { put("automationRunBalance", it) }
@@ -398,7 +398,7 @@ class SignalBillingConfig(
                             currency = plan.currency,
                             limits = config.limits,
                             features = config.features,
-                            metadata = mapOf("planId" to plan.slug),
+                            metadata = mapOf("planId" to plan.slug, "billingInterval" to "month"),
                         ),
                     )
                 }

@@ -9,9 +9,9 @@ import com.apollodeploy.billing.infrastructure.audit.AuditLogClient
 import com.apollodeploy.billing.infrastructure.audit.AuditStatus
 
 class UsageIngestService(
-    private val usageIngestRepo: UsageIngestRepo,
+    private val repository: UsageIngestRepo,
     private val auditLogClient: AuditLogClient,
-    private val inboundUsageEntitlement: InboundUsageEntitlementPort = InboundUsageEntitlementPort { true },
+    private val inboundEntitlement: InboundUsageEntitlementPort = InboundUsageEntitlementPort { true },
 ) {
     companion object {
         /** Maximum quantity per single usage event. Prevents abuse via extreme values. */
@@ -34,13 +34,13 @@ class UsageIngestService(
         }
         val inboundReceivingAllowed =
             req.eventKey != SIGNAL_EMAIL_RECEIVED_EVENT_KEY ||
-                inboundUsageEntitlement.isInboundReceivingAllowed(req.orgId)
+                inboundEntitlement.isInboundReceivingAllowed(req.orgId)
         if (!inboundReceivingAllowed) {
             return UsageIngestResponse(accepted = false, reason = "inbound_receiving_not_entitled")
         }
 
         val accepted =
-            usageIngestRepo.ingestUsageEvent(
+            repository.ingestUsageEvent(
                 orgId = req.orgId,
                 eventKey = req.eventKey,
                 quantity = req.quantity,

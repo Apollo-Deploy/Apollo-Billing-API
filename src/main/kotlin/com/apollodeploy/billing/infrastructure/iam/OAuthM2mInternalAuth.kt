@@ -328,10 +328,10 @@ fun Route.oauthInternalRoutes(
     httpClient: HttpClient,
     build: Route.() -> Unit,
 ) {
-    val jwksUrl = AppConfig.iamJwksUrl
-    val allowedIssuers = AppConfig.iamAllowedIssuers
-    val allowedAudiences = AppConfig.iamValidAudiences
-    val allowedServiceClientIds = AppConfig.iamServiceClientIds
+    val jwksUrl = AppConfig.iam.jwksUrl
+    val allowedIssuers = AppConfig.iam.allowedIssuers
+    val allowedAudiences = AppConfig.iam.validAudiences
+    val allowedServiceClientIds = AppConfig.iam.serviceClientIds
 
     if (allowedServiceClientIds.isEmpty()) {
         logger.warn(

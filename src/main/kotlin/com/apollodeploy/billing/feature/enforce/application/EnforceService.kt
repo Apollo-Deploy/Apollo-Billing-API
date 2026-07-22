@@ -15,7 +15,7 @@ import com.apollodeploy.billing.infrastructure.audit.AuditStatus
 import org.slf4j.LoggerFactory
 
 class EnforceService(
-    private val enforceRepo: EnforceRepo,
+    private val repository: EnforceRepo,
     private val auditLogClient: AuditLogClient,
 ) {
     private val logger = LoggerFactory.getLogger(EnforceService::class.java)
@@ -25,7 +25,7 @@ class EnforceService(
         callerClientId: String? = null,
     ): EnforceResult {
         val enforcer =
-            enforceRepo.getEnforcer(req.appSlug)
+            repository.getEnforcer(req.appSlug)
                 ?: return EnforceResult.Rejected(
                     statusCode = 422,
                     error =

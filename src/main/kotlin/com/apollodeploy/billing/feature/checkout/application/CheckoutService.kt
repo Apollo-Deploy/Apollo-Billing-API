@@ -10,7 +10,7 @@ import com.apollodeploy.billing.infrastructure.audit.AuditStatus
 import com.apollodeploy.billing.infrastructure.validation.UrlValidator
 
 class CheckoutService(
-    private val checkoutRepo: CheckoutRepo,
+    private val repository: CheckoutRepo,
     private val auditLogClient: AuditLogClient,
 ) {
     suspend fun createCheckout(req: CreateCheckoutRequest): CreateCheckoutResult {
@@ -53,7 +53,7 @@ class CheckoutService(
         }
 
         val product =
-            checkoutRepo.findProduct(req.appSlug, req.productSlug)
+            repository.findProduct(req.appSlug, req.productSlug)
                 ?: run {
                     auditLogClient.log(
                         AuditEvent(
@@ -77,7 +77,7 @@ class CheckoutService(
                 }
 
         val session =
-            checkoutRepo.createCheckoutSession(
+            repository.createCheckoutSession(
                 orgId = req.orgId,
                 productIds = listOf(product.polarProductId),
                 customerEmail = req.customerEmail,
