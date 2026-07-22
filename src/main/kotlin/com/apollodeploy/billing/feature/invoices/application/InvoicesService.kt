@@ -2,7 +2,9 @@ package com.apollodeploy.billing.feature.invoices.application
 
 import com.apollodeploy.billing.feature.invoices.domain.GenerateInvoiceResult
 import com.apollodeploy.billing.feature.invoices.domain.GetInvoiceResult
+import com.apollodeploy.billing.feature.invoices.domain.GetInvoiceMeterUsageResult
 import com.apollodeploy.billing.feature.invoices.domain.InvoiceDetailResponse
+import com.apollodeploy.billing.feature.invoices.domain.InvoiceMeterUsageResponse
 import com.apollodeploy.billing.feature.invoices.domain.ListInvoicesResult
 import com.apollodeploy.billing.feature.invoices.domain.PaginatedInvoicesResponse
 import com.apollodeploy.billing.feature.invoices.infrastructure.persistence.InvoicesRepo
@@ -44,6 +46,21 @@ class InvoicesService(
             }
         }
         return GetInvoiceResult.Found(InvoiceDetailResponse(invoice = result.value))
+    }
+
+    suspend fun getInvoiceMeterUsage(invoiceId: String): GetInvoiceMeterUsageResult {
+        val result = invoicesRepo.getInvoiceMeterUsage(invoiceId)
+        if (result.value == null) {
+            return if (result.statusCode == 404) {
+                GetInvoiceMeterUsageResult.NotFound(invoiceId)
+            } else {
+                logger.error("[billing:invoices] failed to fetch meter usage id={} status={}", invoiceId, result.statusCode)
+                GetInvoiceMeterUsageResult.PolarUnavailable
+            }
+        }
+        return GetInvoiceMeterUsageResult.Found(
+            InvoiceMeterUsageResponse(invoiceId = invoiceId, meterUsage = result.value),
+        )
     }
 
     suspend fun listInvoices(

@@ -1,9 +1,10 @@
 package com.apollodeploy.billing.feature.invoices.api
 
 import com.apollodeploy.billing.feature.invoices.application.InvoicesService
-import com.apollodeploy.billing.feature.invoices.domain.GenerateInvoiceAcceptedResponse
+import com.apollodeploy.billing.feature.invoices.domain.GenerateInvoiceResponse
 import com.apollodeploy.billing.feature.invoices.domain.GenerateInvoiceResult
 import com.apollodeploy.billing.feature.invoices.domain.GetInvoiceResult
+import com.apollodeploy.billing.feature.invoices.domain.GetInvoiceMeterUsageResult
 import com.apollodeploy.billing.feature.invoices.domain.ListInvoicesResult
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
@@ -26,9 +27,23 @@ class InvoicesController(
                     mapOf("code" to "billing.invalid_request", "message" to "Missing required query parameter: orgId"),
                 )
 
-        when (invoicesService.generateInvoice(orgId, invoiceId)) {
-            GenerateInvoiceResult.Accepted ->
-                call.respond(HttpStatusCode.Accepted, GenerateInvoiceAcceptedResponse())
+        when (val result = invoicesService.generateInvoice(orgId, invoiceId)) {
+            is GenerateInvoiceResult.Generated ->
+                call.respond(
+                    HttpStatusCode.OK,
+                    GenerateInvoiceResponse(
+                        message = "Invoice generated",
+                        downloadUrl = result.downloadUrl,
+                    ),
+                )
+            GenerateInvoiceResult.Pending ->
+                call.respond(
+                    HttpStatusCode.Accepted,
+                    GenerateInvoiceResponse(
+                        message = "Invoice generation in progress",
+                        downloadUrl = null,
+                    ),
+                )
             is GenerateInvoiceResult.NotFound ->
                 call.respond(
                     HttpStatusCode.NotFound,
@@ -58,6 +73,29 @@ class InvoicesController(
                     mapOf("code" to "billing.invoice_not_found", "message" to "Invoice not found: ${result.invoiceId}"),
                 )
             GetInvoiceResult.PolarUnavailable ->
+                call.respond(
+                    HttpStatusCode.BadGateway,
+                    mapOf("code" to "billing.provider_unavailable", "message" to "Billing provider unavailable"),
+                )
+        }
+    }
+
+    suspend fun getInvoiceMeterUsage(call: ApplicationCall) {
+        val invoiceId =
+            call.parameters["invoiceId"]
+                ?: return call.respond(
+                    HttpStatusCode.BadRequest,
+                    mapOf("code" to "billing.invalid_request", "message" to "Missing invoiceId path parameter"),
+                )
+
+        when (val result = invoicesService.getInvoiceMeterUsage(invoiceId)) {
+            is GetInvoiceMeterUsageResult.Found -> call.respond(HttpStatusCode.OK, result.response)
+            is GetInvoiceMeterUsageResult.NotFound ->
+                call.respond(
+                    HttpStatusCode.NotFound,
+                    mapOf("code" to "billing.invoice_not_found", "message" to "Invoice not found: ${result.invoiceId}"),
+                )
+            GetInvoiceMeterUsageResult.PolarUnavailable ->
                 call.respond(
                     HttpStatusCode.BadGateway,
                     mapOf("code" to "billing.provider_unavailable", "message" to "Billing provider unavailable"),

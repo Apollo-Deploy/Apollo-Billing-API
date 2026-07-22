@@ -1,8 +1,9 @@
 package com.apollodeploy.billing.feature.invoices.api
 
 import com.apollodeploy.billing.feature.common.api.BillingApiErrorResponse
-import com.apollodeploy.billing.feature.invoices.domain.GenerateInvoiceAcceptedResponse
+import com.apollodeploy.billing.feature.invoices.domain.GenerateInvoiceResponse
 import com.apollodeploy.billing.feature.invoices.domain.InvoiceDetailResponse
+import com.apollodeploy.billing.feature.invoices.domain.InvoiceMeterUsageResponse
 import com.apollodeploy.billing.feature.invoices.domain.PaginatedInvoicesResponse
 import com.apollodeploy.tesseract.sdk
 import com.apollodeploy.tesseract.sdkDomain
@@ -17,18 +18,55 @@ import io.ktor.server.routing.route
  *
  * GET  /internal/billing/invoices                       — paginated list of invoices grouped by app
  * GET  /internal/billing/invoices/{invoiceId}           — single invoice by Polar order ID
+ * GET  /internal/billing/invoices/{invoiceId}/meter-usage — meter usage for one invoice
  * POST /internal/billing/invoices/{invoiceId}/invoice   — trigger PDF invoice generation via Polar
  */
 fun Route.invoicesRoutes(controller: InvoicesController) {
     sdkDomain("/internal/billing/invoices", "billingInvoices", stability = "internal")
 
     route("/internal/billing/invoices") {
+        get("/{invoiceId}/meter-usage", {
+            operationId = "getInvoiceMeterUsage"
+            summary = "Get invoice meter usage"
+            description = "Returns the invoice-period usage and current details for each customer meter."
+            tags("Invoices")
+            protected = true
+            securitySchemeNames("serviceToken")
+            request {
+                pathParameter<String>("invoiceId") {
+                    description = "Polar order ID representing the invoice."
+                    required = true
+                }
+            }
+            response {
+                code(HttpStatusCode.OK) {
+                    description = "Invoice meter usage returned."
+                    body<InvoiceMeterUsageResponse>()
+                }
+                code(HttpStatusCode.NotFound) {
+                    description = "No invoice exists with the given ID."
+                    body<BillingApiErrorResponse>()
+                }
+                code(HttpStatusCode.BadGateway) {
+                    description = "Polar was unavailable or returned an unexpected failure."
+                    body<BillingApiErrorResponse>()
+                }
+            }
+        }) {
+            controller.getInvoiceMeterUsage(call)
+        }.sdk {
+            operationId = "getInvoiceMeterUsage"
+            methodName = "getInvoiceMeterUsage"
+            internal = true
+            response<InvoiceMeterUsageResponse>()
+        }
+
         get("/{invoiceId}", {
             operationId = "getInvoice"
             summary = "Get invoice by ID"
             description =
-                "Fetches a single invoice (Polar order) by its ID. Returns the full invoice detail " +
-                "including the resolved app slug, product information, amount, and status."
+                "Fetches a single invoice (Polar order) by its ID. Returns the table-ready invoice " +
+                "fields: app, invoice number, product, amount (total incl. tax/VAT), currency, status, and creation time."
             tags("Invoices")
             protected = true
             securitySchemeNames("serviceToken")
@@ -42,7 +80,7 @@ fun Route.invoicesRoutes(controller: InvoicesController) {
                 code(HttpStatusCode.OK) {
                     description = "Invoice found and returned."
                     body<InvoiceDetailResponse> {
-                        description = "Full invoice detail."
+                        description = "Table-ready invoice detail."
                     }
                 }
                 code(HttpStatusCode.BadRequest) {
@@ -129,9 +167,9 @@ fun Route.invoicesRoutes(controller: InvoicesController) {
             operationId = "generateInvoice"
             summary = "Generate invoice PDF for an order"
             description =
-                "Triggers generation of a PDF invoice for a Polar order via the Customer Portal API. " +
-                "Once generated, the invoice is permanent and cannot be modified. " +
-                "Ensure billing details (name and address) are correct before calling this endpoint."
+                "Triggers generation of a PDF invoice for a Polar order. Returns a pre-signed " +
+                "`downloadUrl` when the PDF is ready (typically within a few seconds). " +
+                "Once generated, the invoice is permanent and cannot be modified."
             tags("Invoices")
             protected = true
             securitySchemeNames("serviceToken")
@@ -146,9 +184,13 @@ fun Route.invoicesRoutes(controller: InvoicesController) {
                 }
             }
             response {
+                code(HttpStatusCode.OK) {
+                    description = "Invoice generated; includes a pre-signed PDF download URL."
+                    body<GenerateInvoiceResponse>()
+                }
                 code(HttpStatusCode.Accepted) {
-                    description = "Invoice generation has been triggered successfully."
-                    body<GenerateInvoiceAcceptedResponse>()
+                    description = "Invoice generation triggered; PDF URL not ready yet — retry shortly."
+                    body<GenerateInvoiceResponse>()
                 }
                 code(HttpStatusCode.BadRequest) {
                     description = "Missing invoiceId path parameter or orgId query parameter."
@@ -174,7 +216,7 @@ fun Route.invoicesRoutes(controller: InvoicesController) {
             methodName = "generateInvoice"
             internal = true
             queryParam("orgId", required = true, description = "Organization ID that owns the order.")
-            response<GenerateInvoiceAcceptedResponse>()
+            response<GenerateInvoiceResponse>()
         }
     }
 }
