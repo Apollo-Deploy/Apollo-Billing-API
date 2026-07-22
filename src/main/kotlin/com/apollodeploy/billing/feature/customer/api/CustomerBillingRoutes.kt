@@ -145,6 +145,7 @@ fun Route.customerBillingRoutes(controller: CustomerBillingController) {
             summary = "List customer payment methods"
             description =
                 "Lists the saved Polar payment methods for the customer mapped to an organization. " +
+                "Each item includes `is_default` so callers can identify the default payment method. " +
                 "Use this to render payment method management UI from an internal app backend."
             tags("Customer Billing")
             protected = true
@@ -157,8 +158,7 @@ fun Route.customerBillingRoutes(controller: CustomerBillingController) {
                 }
                 queryParameter<String>("memberId") {
                     description =
-                        "Optional. Scopes the portal session to a specific user for activity attribution. " +
-                        "Can be omitted for flat org-level billing."
+                        "Optional. Accepted for compatibility; payment methods are org-scoped and this is unused."
                     required = false
                 }
                 queryParameter<Int>("page") {
@@ -331,7 +331,8 @@ fun Route.customerBillingRoutes(controller: CustomerBillingController) {
                 body<OpenBillingPortalRequest> {
                     description =
                         "`orgId` is required. `returnUrl` shows a back button in the portal. " +
-                        "`memberId` is optional — only needed if you want portal activity attributed to a specific user."
+                        "`memberId` should be the acting user's ID for team customers; " +
+                        "when omitted, billing falls back to the Polar team owner."
                     required = true
                 }
             }
@@ -384,6 +385,7 @@ fun Route.customerBillingRoutes(controller: CustomerBillingController) {
                 body<CreateCustomerSessionRequest> {
                     description =
                         "`orgId` is required. `memberId` scopes portal activity to a specific user. " +
+                        "For Polar team customers a member is required; when omitted, billing falls back to the team owner. " +
                         "`returnUrl` sets the back-button URL shown inside the Customer Portal."
                     required = true
                 }

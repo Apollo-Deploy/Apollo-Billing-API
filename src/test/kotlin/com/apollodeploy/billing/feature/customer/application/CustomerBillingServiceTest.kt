@@ -3,7 +3,7 @@ package com.apollodeploy.billing.feature.customer.application
 import com.apollodeploy.billing.feature.customer.domain.CustomerBillingResult
 import com.apollodeploy.billing.feature.customer.domain.UpdateCustomerBillingInfoRequest
 import com.apollodeploy.billing.feature.customer.infrastructure.persistence.CustomerBillingRepo
-import com.apollodeploy.billing.infrastructure.polar.PolarCallResult
+import com.apollodeploy.billing.infrastructure.polar.model.PolarCallResult
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk

@@ -2,7 +2,7 @@ package com.apollodeploy.billing.feature.customer.application
 
 import com.apollodeploy.billing.feature.customer.domain.UpdateCustomerBillingInfoRequest
 import com.apollodeploy.billing.feature.customer.domain.hasAnyUpdate
-import com.apollodeploy.billing.infrastructure.polar.PolarBillingAddressInput
+import com.apollodeploy.billing.infrastructure.polar.model.PolarBillingAddressInput
 import io.kotest.property.Arb
 import io.kotest.property.arbitrary.bind
 import io.kotest.property.arbitrary.filter

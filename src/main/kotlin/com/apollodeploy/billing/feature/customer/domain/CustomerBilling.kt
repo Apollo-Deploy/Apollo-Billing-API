@@ -1,14 +1,15 @@
 package com.apollodeploy.billing.feature.customer.domain
 
-import com.apollodeploy.billing.infrastructure.polar.PolarBillingAddressInput
+import com.apollodeploy.billing.infrastructure.polar.model.PolarBillingAddressInput
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 
 @Serializable
 data class UpdateCustomerBillingInfoRequest(
     val orgId: String,
-    /** Optional. Only needed if you want the Polar portal session scoped to a specific user
-     *  rather than the org's owner. For flat org-level billing this can be omitted. */
+    /** Optional. Scopes portal sessions to a specific user (Polar external_member_id).
+     *  For team customers Polar requires a member on session create; when omitted,
+     *  billing falls back to the team owner. Not needed for org-token APIs. */
     val memberId: String? = null,
     val email: String? = null,
     val billingName: String? = null,
@@ -24,14 +25,18 @@ data class UpdateCustomerBillingInfoResponse(
 
 @Serializable
 data class ListCustomerPaymentMethodsResponse(
+    /**
+     * Polar paginated list (`items` + `pagination`). Each item includes
+     * `is_default` indicating whether it is the customer's default payment method.
+     */
     val paymentMethods: JsonObject,
 )
 
 @Serializable
 data class OpenBillingPortalRequest(
     val orgId: String,
-    /** Optional. Scopes the portal session to a specific user so Polar attributes
-     *  portal activity to them. For flat org-level billing this can be omitted. */
+    /** Optional. Scopes the portal session to a specific user (Polar external_member_id).
+     *  Required by Polar for team customers unless billing falls back to the team owner. */
     val memberId: String? = null,
     val returnUrl: String? = null,
 )
@@ -74,8 +79,8 @@ data class SetDefaultPaymentMethodResponse(
 @Serializable
 data class CreateCustomerSessionRequest(
     val orgId: String,
-    /** Optional. Scopes the session to a specific org member for portal activity attribution.
-     *  For flat org-level billing this can be omitted. */
+    /** Optional. Scopes the session to a specific org member (Polar external_member_id).
+     *  For team customers Polar requires a member; when omitted, billing falls back to the owner. */
     val memberId: String? = null,
     /** Optional. Polar will surface a back button pointing to this URL inside the Customer Portal. */
     val returnUrl: String? = null,

@@ -22,7 +22,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
 class CustomerBillingService(
-    private val customerBillingRepo: CustomerBillingRepo,
+    private val repository: CustomerBillingRepo,
     private val auditLogClient: AuditLogClient,
 ) {
     suspend fun updateBillingInfo(req: UpdateCustomerBillingInfoRequest): CustomerBillingResult<UpdateCustomerBillingInfoResponse> {
@@ -34,7 +34,7 @@ class CustomerBillingService(
         }
 
         val result =
-            customerBillingRepo.updateCustomerBillingInfo(
+            repository.updateCustomerBillingInfo(
                 orgId = req.orgId,
                 email = req.email,
                 billingName = req.billingName,
@@ -92,7 +92,7 @@ class CustomerBillingService(
             return CustomerBillingResult.InvalidRequest("orgId query parameter is required")
         }
 
-        val result = customerBillingRepo.listCustomerPaymentMethods(orgId, page, limit, memberId)
+        val result = repository.listCustomerPaymentMethods(orgId, page, limit, memberId)
         return result.value?.let { CustomerBillingResult.Success(ListCustomerPaymentMethodsResponse(it)) }
             ?: CustomerBillingResult.PolarFailure(
                 fallbackCode = "billing.payment_methods_unavailable",
@@ -112,7 +112,7 @@ class CustomerBillingService(
             )
         }
 
-        val result = customerBillingRepo.deleteCustomerPaymentMethod(orgId, paymentMethodId, memberId)
+        val result = repository.deleteCustomerPaymentMethod(orgId, paymentMethodId, memberId)
         return if (result.value != null) {
             auditLogClient.log(
                 AuditEvent(
@@ -157,7 +157,7 @@ class CustomerBillingService(
             return CustomerBillingResult.InvalidRequest("Invalid returnUrl: $returnUrlError")
         }
 
-        val result = customerBillingRepo.createCustomerPortalSession(req.orgId, req.returnUrl, req.memberId)
+        val result = repository.createCustomerPortalSession(req.orgId, req.returnUrl, req.memberId)
         return if (result.value != null) {
             auditLogClient.log(
                 AuditEvent(
@@ -199,7 +199,7 @@ class CustomerBillingService(
         if (req.name.isBlank()) return CustomerBillingResult.InvalidRequest("name is required")
         if (req.ownerEmail.isBlank()) return CustomerBillingResult.InvalidRequest("ownerEmail is required")
 
-        val result = customerBillingRepo.provisionCustomer(
+        val result = repository.provisionCustomer(
             orgId = req.orgId,
             name = req.name,
             ownerEmail = req.ownerEmail,
@@ -253,7 +253,7 @@ class CustomerBillingService(
         if (orgId.isNullOrBlank()) return CustomerBillingResult.InvalidRequest("orgId is required")
         if (paymentMethodId.isNullOrBlank()) return CustomerBillingResult.InvalidRequest("paymentMethodId is required")
 
-        val result = customerBillingRepo.setDefaultPaymentMethod(orgId, paymentMethodId)
+        val result = repository.setDefaultPaymentMethod(orgId, paymentMethodId)
         return if (result.value != null) {
             auditLogClient.log(
                 AuditEvent(
@@ -308,7 +308,7 @@ class CustomerBillingService(
             return CustomerBillingResult.InvalidRequest("Invalid returnUrl: $returnUrlError")
         }
 
-        val result = customerBillingRepo.createCustomerPortalSession(req.orgId, req.returnUrl, req.memberId)
+        val result = repository.createCustomerPortalSession(req.orgId, req.returnUrl, req.memberId)
         return if (result.value != null) {
             auditLogClient.log(
                 AuditEvent(

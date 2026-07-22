@@ -1,9 +1,9 @@
 package com.apollodeploy.billing.feature.customer.infrastructure.persistence
 
-import com.apollodeploy.billing.infrastructure.polar.PolarBillingAddressInput
-import com.apollodeploy.billing.infrastructure.polar.PolarCallResult
 import com.apollodeploy.billing.infrastructure.polar.PolarClient
-import com.apollodeploy.billing.infrastructure.polar.PolarCustomerSession
+import com.apollodeploy.billing.infrastructure.polar.model.PolarBillingAddressInput
+import com.apollodeploy.billing.infrastructure.polar.model.PolarCallResult
+import com.apollodeploy.billing.infrastructure.polar.model.PolarCustomerSession
 import kotlinx.serialization.json.JsonObject
 
 class CustomerBillingRepo(
