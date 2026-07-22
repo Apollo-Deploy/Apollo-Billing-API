@@ -1,125 +1,176 @@
 package com.apollodeploy.billing.infrastructure.validation
 
 import java.net.URI
+import java.net.URISyntaxException
+import java.util.LinkedHashSet
+
+private const val ALLOWED_DOMAINS_ENV =
+    "CHECKOUT_REDIRECT_ALLOWED_DOMAINS"
+
+private const val HTTPS_SCHEME = "https"
+
+private const val BLANK_URL_ERROR =
+    "URL cannot be blank"
+
+private const val MALFORMED_URL_ERROR =
+    "Malformed URL"
+
+private const val HTTPS_REQUIRED_ERROR =
+    "Only HTTPS URLs are allowed for checkout redirects"
+
+private const val INVALID_HOST_ERROR =
+    "URL must have a valid host"
+
+private const val CREDENTIALS_ERROR =
+    "URLs with credentials are not allowed"
 
 /**
- * Apollo Billing — URL validator for checkout redirect URLs.
+ * Validates checkout redirect URLs against an explicit host allowlist.
  *
- * Validates successUrl and returnUrl to prevent open-redirect attacks
- * through the Polar checkout flow. Only HTTPS URLs on allowed domains
- * (or localhost for dev) are permitted.
+ * Environment entries support:
  *
- * Security:
- *   - Blocks non-HTTPS schemes (except http://localhost for dev)
- *   - Blocks IPs, internal hostnames, and known-dangerous patterns
- *   - Allows only domains in the configured allowlist (or any domain if allowlist is empty)
- *   - Rejects URLs with credentials (user:pass@host)
+ * - `app.example.com` for an exact host
+ * - `*.example.com` for subdomains only
  */
 object UrlValidator {
-    // Default domains that are always allowed for checkout redirects.
-    // Extend via CHECKOUT_REDIRECT_ALLOWED_DOMAINS env var.
-    private val DEFAULT_ALLOWED_DOMAINS =
-        setOf(
+    private val defaultAllowedHosts =
+        arrayOf(
             "apollodeploy.com",
             "www.apollodeploy.com",
             "app.apollodeploy.com",
+            "account.apollodeploy.com",
+            "auth.apollodeploy.com",
             "signal.apollodeploy.com",
             "billing.apollodeploy.com",
             "billing.dev.apollodeploy.com",
+            "apollodeploy.local",
         )
-
-    // Patterns that indicate potentially dangerous URLs
-    private val BLOCKED_HOST_PATTERNS =
-        listOf(
-            Regex("""^\d+\.\d+\.\d+\.\d+$"""), // IPv4 addresses
-            Regex("""^\[.*]$"""), // IPv6 addresses
-            Regex("""^localhost$""", RegexOption.IGNORE_CASE),
-            Regex("""^127\.0\.0\.\d+$"""),
-            Regex("""^0\.0\.0\.0$"""),
-            Regex("""^10\.\d+\.\d+\.\d+$"""), // Private RFC1918
-            Regex("""^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$"""),
-            Regex("""^192\.168\.\d+\.\d+$"""),
-            Regex("""\.local$""", RegexOption.IGNORE_CASE),
-            Regex("""\.internal$""", RegexOption.IGNORE_CASE),
-        )
-
-    private val configuredAllowedDomains: Set<String> by lazy {
-        val envDomains =
-            System
-                .getenv("CHECKOUT_REDIRECT_ALLOWED_DOMAINS")
-                ?.split(",")
-                ?.map { it.trim().lowercase() }
-                ?.filter { it.isNotBlank() }
-                ?.toSet()
-                ?: emptySet()
-        DEFAULT_ALLOWED_DOMAINS + envDomains
-    }
 
     /**
-     * Validate a redirect URL for checkout flows.
-     * Returns null if valid, or an error message if invalid.
+     * Wildcard rules are stored with a leading dot:
+     *
+     * `*.example.com` becomes `.example.com`.
+     */
+    private val allowedHosts: Array<String> =
+        loadAllowedHosts()
+
+    /**
+     * Returns null when valid, otherwise an error message.
      */
     fun validateRedirectUrl(url: String?): String? {
-        if (url == null) return null // null is allowed (optional field)
-        if (url.isBlank()) return "URL cannot be blank"
+        if (url == null) {
+            return null
+        }
+
+        if (url.isBlank()) {
+            return BLANK_URL_ERROR
+        }
 
         val uri =
             try {
                 URI(url)
-            } catch (e: Exception) {
-                return "Malformed URL: ${e.message}"
+            } catch (_: URISyntaxException) {
+                return MALFORMED_URL_ERROR
             }
 
-        // Must have a scheme
-        val scheme = uri.scheme?.lowercase() ?: return "URL must have a scheme (https://)"
-
-        // Only HTTPS allowed (no http, javascript:, data:, file:, etc.)
-        if (scheme != "https") {
-            return "Only HTTPS URLs are allowed for checkout redirects"
+        if (!uri.scheme.equals(HTTPS_SCHEME, ignoreCase = true)) {
+            return HTTPS_REQUIRED_ERROR
         }
 
-        // Must have a host
-        val host = uri.host?.lowercase() ?: return "URL must have a valid host"
-
-        // No credentials in URL
-        if (uri.userInfo != null) {
-            return "URLs with credentials are not allowed"
+        if (uri.rawUserInfo != null) {
+            return CREDENTIALS_ERROR
         }
 
-        // Block dangerous host patterns
-        for (pattern in BLOCKED_HOST_PATTERNS) {
-            if (pattern.containsMatchIn(host)) {
-                return "URL host is not allowed: $host"
-            }
+        val host =
+            uri.host
+                ?.lowercase()
+                ?.removeSuffix(".")
+                ?: return INVALID_HOST_ERROR
+
+        if (!isAllowedHost(host)) {
+            return "URL domain not in allowed list: $host"
         }
 
-        // If allowlist is configured, validate against it
-        if (configuredAllowedDomains.isNotEmpty()) {
-            val isAllowed =
-                configuredAllowedDomains.any { allowed ->
-                    host == allowed || host.endsWith(".$allowed")
-                }
-            if (!isAllowed) {
-                return "URL domain not in allowed list: $host"
-            }
-        }
-
-        return null // Valid
+        return null
     }
 
-    /**
-     * Convenience: validate and return the URL if valid, or throw.
-     */
     fun requireValidRedirectUrl(
         url: String?,
         fieldName: String,
     ): String? {
-        val error = validateRedirectUrl(url) ?: return url
-        throw InvalidRedirectUrlException(fieldName, error)
+        val error =
+            validateRedirectUrl(url)
+                ?: return url
+
+        throw InvalidRedirectUrlException(
+            fieldName = fieldName,
+            reason = error,
+        )
+    }
+
+    private fun isAllowedHost(host: String): Boolean {
+        for (rule in allowedHosts) {
+            if (rule[0] == '.') {
+                // A wildcard matches subdomains, but not the root domain.
+                if (host.length > rule.length && host.endsWith(rule)) {
+                    return true
+                }
+            } else if (host == rule) {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    private fun loadAllowedHosts(): Array<String> {
+        val hosts =
+            LinkedHashSet<String>(
+                defaultAllowedHosts.size + 4,
+            )
+
+        hosts.addAll(defaultAllowedHosts)
+
+        val configured =
+            System.getenv(ALLOWED_DOMAINS_ENV)
+
+        if (!configured.isNullOrBlank()) {
+            for (value in configured.split(',')) {
+                normalizeRule(value)?.let(hosts::add)
+            }
+        }
+
+        return hosts.toTypedArray()
+    }
+
+    private fun normalizeRule(value: String): String? {
+        val rule =
+            value
+                .trim()
+                .lowercase()
+                .removeSuffix(".")
+
+        if (rule.isEmpty()) {
+            return null
+        }
+
+        return if (rule.startsWith("*.")) {
+            rule.removePrefix("*")
+        } else {
+            rule
+        }
     }
 }
 
+/**
+ * Expected validation failure.
+ *
+ * Stack traces are disabled because malformed user input is not an
+ * application fault and may occur frequently on public endpoints.
+ */
 class InvalidRedirectUrlException(
     val fieldName: String,
     val reason: String,
-) : RuntimeException("Invalid $fieldName: $reason")
+) : RuntimeException("Invalid $fieldName: $reason") {
+    override fun fillInStackTrace(): Throwable = this
+}

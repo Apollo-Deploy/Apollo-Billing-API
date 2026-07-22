@@ -1,46 +1,73 @@
 package com.apollodeploy.billing.infrastructure.webhook
 
 import com.apollodeploy.billing.infrastructure.redis.RedisPool
+import kotlinx.coroutines.CancellationException
 import org.slf4j.LoggerFactory
 
+private const val DEFAULT_DEDUP_WINDOW_SECONDS = 600L
+private const val DEDUP_KEY_PREFIX = "billing:webhook:dedup:"
+private const val PROCESSED_VALUE = "1"
+
 /**
- * Apollo Billing — Redis-backed webhook event deduplicator.
+ * Redis-backed webhook deduplication.
  *
- * Prevents replay attacks by tracking processed webhook IDs in Redis.
- * The dedup window (10 min) is 2x the webhook signature tolerance (5 min)
- * to cover the full replay attack surface.
+ * Returns true when the webhook may be processed and false when it has
+ * already been processed within the configured deduplication window.
  *
- * Falls back to allowing the request if Redis is unavailable (signature
- * verification is still the primary security control).
+ * Fails open when Redis is unavailable because webhook signature
+ * verification remains the primary security control.
  */
 class WebhookDeduplicator(
     private val redis: RedisPool? = null,
-    private val dedupWindowSeconds: Long = 600L, // 10 minutes
+    private val dedupWindowSeconds: Long = DEFAULT_DEDUP_WINDOW_SECONDS,
 ) {
-    private val logger = LoggerFactory.getLogger(WebhookDeduplicator::class.java)
+    init {
+        require(dedupWindowSeconds > 0) {
+            "Deduplication window must be greater than zero"
+        }
+    }
 
-    /**
-     * Attempt to mark a webhook as processed.
-     * Returns true if this is the FIRST time (not a duplicate).
-     * Returns false if it's a DUPLICATE (already processed within dedup window).
-     */
     suspend fun tryProcess(webhookId: String): Boolean {
-        if (webhookId.isBlank()) return true // Blank IDs can't be deduped
-
-        if (redis == null || !redis.isAvailable) {
-            // Redis unavailable — fall through to allow (signature is the primary check)
-            logger.debug("[billing:webhook-dedup] Redis unavailable, skipping dedup for webhook-id={}", webhookId)
+        if (webhookId.isBlank()) {
             return true
         }
 
-        val redisKey = "billing:webhook:dedup:$webhookId"
-        val isNew = redis.setNx(redisKey, "1", dedupWindowSeconds)
+        val redis = redis ?: return true
 
-        if (!isNew) {
-            logger.info("[billing:webhook-dedup] Duplicate webhook-id={} — rejecting", webhookId)
-            return false
+        return try {
+            when (
+                redis.setNx(
+                    key = DEDUP_KEY_PREFIX + webhookId,
+                    value = PROCESSED_VALUE,
+                    ttlSeconds = dedupWindowSeconds,
+                )
+            ) {
+                true -> true
+
+                false -> {
+                    logger.debug(
+                        "Duplicate webhook rejected: webhookId={}",
+                        webhookId,
+                    )
+                    false
+                }
+
+                null -> true
+            }
+        } catch (cause: CancellationException) {
+            throw cause
+        } catch (cause: Exception) {
+            logger.warn(
+                "Webhook deduplication unavailable; allowing webhookId={}: {}",
+                webhookId,
+                cause.message,
+            )
+            true
         }
+    }
 
-        return true
+    private companion object {
+        val logger =
+            LoggerFactory.getLogger(WebhookDeduplicator::class.java)
     }
 }

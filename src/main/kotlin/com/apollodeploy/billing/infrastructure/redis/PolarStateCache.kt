@@ -1,96 +1,147 @@
 package com.apollodeploy.billing.infrastructure.redis
 
 import com.apollodeploy.billing.infrastructure.polar.PolarClient
-import com.apollodeploy.billing.infrastructure.polar.PolarCustomerState
+import com.apollodeploy.billing.infrastructure.polar.model.PolarCustomerState
+import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
 
+private const val DEFAULT_CACHE_TTL_SECONDS = 300L
+private const val CACHE_KEY_PREFIX = "billing:polar:state:"
+
+private val CACHE_JSON =
+    Json {
+        ignoreUnknownKeys = true
+        explicitNulls = false
+    }
+
 /**
- * Apollo Billing — Redis-backed Polar customer state cache.
+ * Redis-backed fallback cache for Polar customer state.
  *
- * Eliminates the fail-open vulnerability: when Polar is unreachable, meter balances
- * are read from Redis (last-known-good values) instead of being omitted entirely.
- *
- * Flow:
- *   1. Call Polar API for customer state.
- *   2. On success → cache in Redis with TTL (5 min), return fresh state.
- *   3. On failure → read from Redis as fallback, return stale-but-valid state.
- *   4. If BOTH Polar AND Redis are down → return null (only then does fail-open apply).
- *
- * This means an attacker would need to take down BOTH Polar AND Redis simultaneously
- * to trigger a fail-open scenario — far harder than just disrupting one service.
- *
- * Redis key format: `billing:polar:state:{orgId}`
- * TTL: 5 minutes (stale data is better than no data for enforcement)
+ * Fresh state is requested from Polar first. When Polar is unavailable,
+ * the last successfully cached state is loaded from Redis.
  */
 class PolarStateCache(
     private val polarClient: PolarClient,
     private val redis: RedisPool,
-    private val cacheTtlSeconds: Long = 300L, // 5 minutes
+    private val cacheTtlSeconds: Long = DEFAULT_CACHE_TTL_SECONDS,
 ) {
-    private val logger = LoggerFactory.getLogger(PolarStateCache::class.java)
-    private val json =
-        Json {
-            ignoreUnknownKeys = true
-            explicitNulls = false
+    init {
+        require(cacheTtlSeconds > 0) {
+            "Cache TTL must be greater than zero"
         }
+    }
 
-    /**
-     * Get customer state with Redis fallback.
-     *
-     * @return PolarCustomerState from Polar (fresh) or Redis (stale), or null if both unavailable.
-     */
     suspend fun getCustomerState(orgId: String): PolarCustomerState? {
-        // Try Polar first
-        val freshState = polarClient.getCustomerState(orgId)
+        val key = CACHE_KEY_PREFIX + orgId
+
+        val freshState =
+            try {
+                polarClient.getCustomerState(orgId)
+            } catch (cause: CancellationException) {
+                throw cause
+            } catch (cause: Exception) {
+                logger.warn(
+                    "Polar customer state unavailable for org={}: {}",
+                    orgId,
+                    cause.message,
+                )
+                null
+            }
 
         if (freshState != null) {
-            // Success — cache in Redis for fallback
-            cacheState(orgId, freshState)
+            cacheState(
+                key = key,
+                state = freshState,
+                orgId = orgId,
+            )
             return freshState
         }
 
-        // Polar unavailable — try Redis fallback
-        logger.warn("[billing:polar-cache] Polar unavailable for org={}, trying Redis fallback", orgId)
-        return readCachedState(orgId)
+        return readCachedState(
+            key = key,
+            orgId = orgId,
+        )
     }
 
-    /**
-     * Invalidate the cached state for an org (e.g. after a webhook updates subscriptions).
-     */
     suspend fun invalidate(orgId: String) {
-        redis.del(cacheKey(orgId))
-    }
-
-    private suspend fun cacheState(
-        orgId: String,
-        state: PolarCustomerState,
-    ) {
         try {
-            val serialized = json.encodeToString(state)
-            redis.setEx(cacheKey(orgId), serialized, cacheTtlSeconds)
-        } catch (e: Exception) {
-            logger.warn("[billing:polar-cache] Failed to cache state for org={}: {}", orgId, e.message)
+            redis.del(CACHE_KEY_PREFIX + orgId)
+        } catch (cause: CancellationException) {
+            throw cause
+        } catch (cause: Exception) {
+            logger.warn(
+                "Failed to invalidate Polar state for org={}: {}",
+                orgId,
+                cause.message,
+            )
         }
     }
 
-    private suspend fun readCachedState(orgId: String): PolarCustomerState? {
-        val cached = redis.get(cacheKey(orgId))
+    private suspend fun cacheState(
+        key: String,
+        state: PolarCustomerState,
+        orgId: String,
+    ) {
+        try {
+            redis.setEx(
+                key = key,
+                value = CACHE_JSON.encodeToString(state),
+                ttlSeconds = cacheTtlSeconds,
+            )
+        } catch (cause: CancellationException) {
+            throw cause
+        } catch (cause: Exception) {
+            logger.warn(
+                "Failed to cache Polar state for org={}: {}",
+                orgId,
+                cause.message,
+            )
+        }
+    }
+
+    private suspend fun readCachedState(
+        key: String,
+        orgId: String,
+    ): PolarCustomerState? {
+        val cached =
+            try {
+                redis.get(key)
+            } catch (cause: CancellationException) {
+                throw cause
+            } catch (cause: Exception) {
+                logger.warn(
+                    "Redis fallback unavailable for org={}: {}",
+                    orgId,
+                    cause.message,
+                )
+                return null
+            }
+
         if (cached == null) {
-            logger.warn("[billing:polar-cache] No Redis fallback available for org={}", orgId)
+            logger.debug(
+                "No cached Polar state available for org={}",
+                orgId,
+            )
             return null
         }
 
         return try {
-            val state = json.decodeFromString<PolarCustomerState>(cached)
-            logger.info("[billing:polar-cache] Using Redis fallback for org={} (stale data)", orgId)
-            state
-        } catch (e: Exception) {
-            logger.error("[billing:polar-cache] Failed to deserialize Redis fallback for org={}", orgId, e)
+            CACHE_JSON.decodeFromString<PolarCustomerState>(cached)
+        } catch (cause: SerializationException) {
+            logger.warn(
+                "Invalid cached Polar state for org={}: {}",
+                orgId,
+                cause.message,
+            )
             null
         }
     }
 
-    private fun cacheKey(orgId: String): String = "billing:polar:state:$orgId"
+    private companion object {
+        val logger =
+            LoggerFactory.getLogger(PolarStateCache::class.java)
+    }
 }

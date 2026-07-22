@@ -2,6 +2,7 @@ package com.apollodeploy.billing.infrastructure.redis
 
 import com.apollodeploy.billing.infrastructure.config.AppConfig
 import io.lettuce.core.RedisURI
+import io.lettuce.core.SetArgs
 import io.lettuce.core.api.StatefulRedisConnection
 import io.lettuce.core.api.async.RedisAsyncCommands
 import kotlinx.coroutines.future.await
@@ -9,107 +10,179 @@ import org.slf4j.LoggerFactory
 import io.lettuce.core.RedisClient as LettuceClient
 
 /**
- * Apollo Billing — Redis client wrapper.
+ * Shared asynchronous Redis connection.
  *
- * Provides async coroutine-friendly access to Redis for:
- *   - Polar customer state caching (fallback when Polar is offline)
- *   - Usage ingestion idempotency keys
- *   - Webhook deduplication
- *
- * Uses Lettuce with async commands + Kotlin coroutine `await()`.
+ * Lettuce connections are thread-safe and support concurrent async commands,
+ * so a separate connection pool is unnecessary for normal Redis operations.
  */
 class RedisPool private constructor(
     private val client: LettuceClient?,
     private val connection: StatefulRedisConnection<String, String>?,
+    private val commands: RedisAsyncCommands<String, String>?,
 ) : AutoCloseable {
-    private val logger = LoggerFactory.getLogger(RedisPool::class.java)
 
-    val isAvailable: Boolean get() = connection != null && connection.isOpen
+    /**
+     * Indicates whether the Redis connection exists and is currently open.
+     *
+     * This is not a health check. Redis can still become unavailable between
+     * this check and the next command.
+     */
+    val isAvailable: Boolean
+        get() = connection?.isOpen == true
 
-    companion object {
-        fun create(): RedisPool {
-            val logger = LoggerFactory.getLogger(RedisPool::class.java)
-            return try {
-                val uri =
-                    RedisURI
-                        .builder()
-                        .withHost(AppConfig.redisHost)
-                        .withPort(AppConfig.redisPort)
-                        .apply {
-                            val pass = AppConfig.redisPassword
-                            if (pass.isNotBlank()) withPassword(pass.toCharArray())
-                        }.build()
+    /**
+     * Returns the stored value.
+     *
+     * Returns null when:
+     * - the key does not exist
+     * - Redis was unavailable when this instance was created
+     *
+     * Runtime Redis failures are propagated to the caller.
+     */
+    suspend fun get(key: String): String? =
+        commands?.get(key)?.await()
 
-                val client = LettuceClient.create(uri)
-                val connection = client.connect()
-                logger.info("[billing:redis] Connected to Redis at {}:{}", AppConfig.redisHost, AppConfig.redisPort)
-                RedisPool(client, connection)
-            } catch (e: Exception) {
-                logger.warn("[billing:redis] Failed to connect to Redis: {} — fallback cache disabled", e.message)
-                RedisPool(null, null)
-            }
-        }
-
-        /** Stub for manifest/SDK generation mode. */
-        fun createStub(): RedisPool = RedisPool(null, null)
-    }
-
-    private fun commands(): RedisAsyncCommands<String, String>? = connection?.async()
-
-    /** GET with coroutine await. Returns null if Redis unavailable or key absent. */
-    suspend fun get(key: String): String? {
-        val cmd = commands() ?: return null
-        return try {
-            cmd.get(key).await()
-        } catch (e: Exception) {
-            logger.warn("[billing:redis] GET failed key={}: {}", key, e.message)
-            null
-        }
-    }
-
-    /** SET with TTL (seconds). Fire-and-forget on failure. */
+    /**
+     * Stores a value with an expiry.
+     *
+     * Returns false when Redis was unavailable during startup.
+     * Runtime Redis failures are propagated to the caller.
+     */
     suspend fun setEx(
         key: String,
         value: String,
         ttlSeconds: Long,
-    ) {
-        val cmd = commands() ?: return
-        try {
-            cmd.setex(key, ttlSeconds, value).await()
-        } catch (e: Exception) {
-            logger.warn("[billing:redis] SETEX failed key={}: {}", key, e.message)
-        }
+    ): Boolean {
+        requirePositiveTtl(ttlSeconds)
+
+        val commands = commands ?: return false
+        val arguments = SetArgs.Builder.ex(ttlSeconds)
+
+        return commands.set(key, value, arguments).await() == OK
     }
 
-    /** SET NX (only if not exists) with TTL. Returns true if set, false if already exists. */
+    /**
+     * Atomically stores a value only when the key does not already exist,
+     * with the expiry applied in the same Redis command.
+     *
+     * Returns:
+     * - true when the key was created
+     * - false when the key already existed
+     * - null when Redis was unavailable during startup
+     *
+     * Runtime Redis failures are propagated to the caller.
+     */
     suspend fun setNx(
         key: String,
         value: String,
         ttlSeconds: Long,
-    ): Boolean {
-        val cmd = commands() ?: return false
-        return try {
-            val result = cmd.setnx(key, value).await()
-            if (result) cmd.expire(key, ttlSeconds).await()
-            result
-        } catch (e: Exception) {
-            logger.warn("[billing:redis] SETNX failed key={}: {}", key, e.message)
-            false
-        }
+    ): Boolean? {
+        requirePositiveTtl(ttlSeconds)
+
+        val commands = commands ?: return null
+        val arguments =
+            SetArgs.Builder
+                .nx()
+                .ex(ttlSeconds)
+
+        return commands.set(key, value, arguments).await() == OK
     }
 
-    /** DEL a key. */
-    suspend fun del(key: String) {
-        val cmd = commands() ?: return
-        try {
-            cmd.del(key).await()
-        } catch (e: Exception) {
-            logger.warn("[billing:redis] DEL failed key={}: {}", key, e.message)
-        }
+    /**
+     * Deletes a key.
+     *
+     * Returns true when a key was removed.
+     * Returns false when the key did not exist or Redis was unavailable
+     * during startup.
+     */
+    suspend fun del(key: String): Boolean {
+        val commands = commands ?: return false
+        return commands.del(key).await() > 0
     }
 
     override fun close() {
-        runCatching { connection?.close() }
-        runCatching { client?.shutdown() }
+        try {
+            connection?.close()
+        } finally {
+            client?.shutdown()
+        }
+    }
+
+    companion object {
+        private const val OK = "OK"
+
+        private val logger =
+            LoggerFactory.getLogger(RedisPool::class.java)
+
+        private val unavailable =
+            RedisPool(
+                client = null,
+                connection = null,
+                commands = null,
+            )
+
+        fun create(): RedisPool {
+            var client: LettuceClient? = null
+
+            return try {
+                val uri =
+                    RedisURI
+                        .builder()
+                        .withHost(AppConfig.redis.host)
+                        .withPort(AppConfig.redis.port)
+                        .withDatabase(AppConfig.redis.database)
+                        .apply {
+                            val password = AppConfig.redis.password
+
+                            if (password.isNotBlank()) {
+                                withPassword(password.toCharArray())
+                            }
+                        }
+                        .build()
+
+                val createdClient = LettuceClient.create(uri)
+                client = createdClient
+
+                val connection = createdClient.connect()
+
+                logger.info(
+                    "Connected to Redis at {}:{} using database {}",
+                    AppConfig.redis.host,
+                    AppConfig.redis.port,
+                    AppConfig.redis.database,
+                )
+
+                RedisPool(
+                    client = createdClient,
+                    connection = connection,
+                    commands = connection.async(),
+                )
+            } catch (cause: Exception) {
+                try {
+                    client?.shutdown()
+                } catch (shutdownCause: Exception) {
+                    cause.addSuppressed(shutdownCause)
+                }
+
+                logger.warn(
+                    "Failed to connect to Redis; Redis-backed features are disabled: {}",
+                    cause.message,
+                )
+
+                unavailable
+            }
+        }
+
+        /**
+         * Connection-free instance for manifest and SDK generation.
+         */
+        fun createStub(): RedisPool =
+            unavailable
+
+        private fun requirePositiveTtl(ttlSeconds: Long) {
+            require(ttlSeconds > 0) {
+                "Redis TTL must be greater than zero"
+            }
+        }
     }
 }
