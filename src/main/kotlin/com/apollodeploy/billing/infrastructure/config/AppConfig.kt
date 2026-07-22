@@ -4,122 +4,175 @@ import com.typesafe.config.Config
 import com.typesafe.config.ConfigFactory
 
 object AppConfig {
-    private val config: Config = ConfigFactory.load()
+    private val root = ConfigFactory.load().getConfig("apollo-billing")
 
-    val environment: String = config.getString("apollo-billing.environment")
-    val billingPort: Int = config.getInt("apollo-billing.port")
-    val requestBodyLimitBytes: Long = config.getLong("apollo-billing.request-body-limit-bytes")
-    val metricsEnabled: Boolean = config.getBoolean("apollo-billing.metrics-enabled")
-    val corsOrigins: String = config.getString("apollo-billing.cors-origins")
+    val environment: String = root.getString("environment")
+    val port: Int = root.getInt("port")
+    val requestBodyLimitBytes: Long = root.getLong("request-body-limit-bytes")
+    val metricsEnabled: Boolean = root.getBoolean("metrics-enabled")
+    val corsOrigins: Set<String> = root.getStringSet("cors-origins")
 
-    // Polar
-    val polarWebhookSecret: String = config.getString("apollo-billing.polar.webhook-secret")
-    val polarApiKey: String = config.getString("apollo-billing.polar.api-key")
-    val polarApiBaseUrl: String = config.getString("apollo-billing.polar.api-base-url")
-    val polarRequestTimeoutMs: Long = config.getLong("apollo-billing.polar.request-timeout-ms")
+    val polar: PolarConfig = root.getConfig("polar").toPolarConfig()
+    val platform: PlatformConfig = root.getConfig("platform").toPlatformConfig()
+    val iam: IamConfig = root.getConfig("iam").toIamConfig(platform.url)
+    val redis: RedisConfig = root.getConfig("redis").toRedisConfig()
 
-    // Platform DB -- billing_app role
-    val platformDbHost: String = config.getString("apollo-billing.platform-db.host")
-    val platformDbPort: Int = config.getInt("apollo-billing.platform-db.port")
-    val platformDbName: String = config.getString("apollo-billing.platform-db.name")
-    val platformDbUser: String = config.getString("apollo-billing.platform-db.user")
-    val platformDbPassword: String = config.getString("apollo-billing.platform-db.password")
-    val platformDbSslmode: String = config.getString("apollo-billing.platform-db.sslmode")
-    val platformDbPoolMaxSize: Int = config.getInt("apollo-billing.platform-db.pool-max-size")
-    val platformDbIdleTimeoutMs: Long = config.getLong("apollo-billing.platform-db.idle-timeout-ms")
-    val platformDbConnectionTimeoutMs: Long = config.getLong("apollo-billing.platform-db.connection-timeout-ms")
-    val platformDbStatementTimeoutMs: Long = config.getLong("apollo-billing.platform-db.statement-timeout-ms")
+    private val databaseProvider =
+        System.getenv("DB_PROVIDER")
+            ?.takeIf(String::isNotBlank)
+            ?: root.getString("db-provider")
 
-    // Provider-aware SSL defaults
-    private val platformRawSsl: String = config.getString("apollo-billing.platform-db.sslmode")
-    private val signalRawSsl: String = config.getString("apollo-billing.signal-db.sslmode")
-    private val dbProvider: String = (System.getenv("DB_PROVIDER") ?: config.getString("apollo-billing.db-provider")).lowercase()
-    val platformDbEffectiveSslmode: String =
-        if (dbProvider == "planetscale" || dbProvider == "pscale") {
-            if (platformRawSsl.equals("disable", ignoreCase = true)) "disable" else "require"
-        } else platformRawSsl.ifBlank { "disable" }
-    val signalDbEffectiveSslmode: String =
-        if (dbProvider == "planetscale" || dbProvider == "pscale") {
-            if (signalRawSsl.equals("disable", ignoreCase = true)) "disable" else "require"
-        } else signalRawSsl.ifBlank { "disable" }
+    val platformDatabase: DatabaseConfig =
+        root.getConfig("platform-db").toDatabaseConfig(databaseProvider)
 
-    // Platform reader DB -- billing_superuser role on the platform database
-    val platformReaderDbUser: String = config.getString("apollo-billing.platform-reader-db.user")
-    val platformReaderDbPassword: String = config.getString("apollo-billing.platform-reader-db.password")
-    val platformReaderDbPoolMaxSize: Int = config.getInt("apollo-billing.platform-reader-db.pool-max-size")
-    val platformReaderDbIdleTimeoutMs: Long = config.getLong("apollo-billing.platform-reader-db.idle-timeout-ms")
-    val platformReaderDbConnectionTimeoutMs: Long = config.getLong("apollo-billing.platform-reader-db.connection-timeout-ms")
-    val platformReaderDbStatementTimeoutMs: Long = config.getLong("apollo-billing.platform-reader-db.statement-timeout-ms")
+    val platformReaderDatabase: DatabasePoolConfig =
+        root.getConfig("platform-reader-db").toDatabasePoolConfig()
 
-    // Platform OAuth2 -- client_credentials for audit-log ingestion and outbound calls
-    val platformUrl: String = config.getString("apollo-billing.platform.url")
-    val platformClientId: String = config.getString("apollo-billing.platform.client-id")
-    val platformClientSecret: String = config.getString("apollo-billing.platform.client-secret")
+    val signalDatabase: DatabaseConfig =
+        root.getConfig("signal-db").toDatabaseConfig(databaseProvider)
 
-    // IAM / OAuth M2M inbound -- verify tokens sent by callers of /internal/* endpoints.
-    // The platform issues EdDSA-signed JWTs via /auth/oauth2/token (client_credentials).
-    // Billing verifies them locally via JWKS (no shared secret needed).
+    val signal: SignalConfig =
+        root.getConfig("signal").toSignalConfig()
+}
 
-    /** JWKS URL for token verification. Defaults to {platformUrl}/auth/jwks. */
-    val iamJwksUrl: String =
-        config
-            .getString("apollo-billing.iam.auth-jwks-url")
-            .ifBlank { if (platformUrl.isNotBlank()) "${platformUrl.trimEnd('/')}/auth/jwks" else "" }
+data class PolarConfig(
+    val webhookSecret: String,
+    val apiKey: String,
+    val apiBaseUrl: String,
+    val requestTimeoutMs: Long,
+)
 
-    /** Expected iss claim in incoming tokens. Defaults to platformUrl. */
-    val iamAllowedIssuers: Set<String> =
-        config
-            .getString("apollo-billing.iam.issuer-url")
-            .split(",")
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-            .toSet()
-            .ifEmpty { if (platformUrl.isNotBlank()) setOf(platformUrl) else emptySet() }
+data class PlatformConfig(
+    val url: String,
+    val clientId: String,
+    val clientSecret: String,
+)
 
-    /** Expected aud claim(s) in incoming tokens. Defaults to platformUrl. */
-    val iamValidAudiences: Set<String> =
-        config
-            .getString("apollo-billing.iam.valid-audiences")
-            .split(",")
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-            .toSet()
-            .ifEmpty { if (platformUrl.isNotBlank()) setOf(platformUrl) else emptySet() }
+data class IamConfig(
+    val jwksUrl: String,
+    val allowedIssuers: Set<String>,
+    val validAudiences: Set<String>,
+    val serviceClientIds: Set<String>,
+    val requestTimeoutMs: Long,
+)
 
-    /**
-     * Comma-separated OAuth client_id values that are allowed to call /internal/ endpoints.
-     * Fails closed when empty. Set to the client_id of each first-party service registered
-     * on the platform (e.g. signal's client_id).
-     */
-    val iamServiceClientIds: Set<String> =
-        config
-            .getString("apollo-billing.iam.service-client-ids")
-            .split(",")
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-            .toSet()
+data class DatabaseConfig(
+    val host: String,
+    val port: Int,
+    val name: String,
+    val user: String,
+    val password: String,
+    val sslMode: String,
+    val pool: DatabasePoolConfig,
+)
 
-    /** Per-request timeout for outbound OAuth / JWKS HTTP calls (milliseconds). */
-    val iamRequestTimeoutMs: Long = config.getLong("apollo-billing.iam.request-timeout-ms")
+data class DatabasePoolConfig(
+    val maxSize: Int,
+    val idleTimeoutMs: Long,
+    val connectionTimeoutMs: Long,
+    val statementTimeoutMs: Long,
+)
 
-    // Signal DB -- billing_superuser role
-    val signalDbHost: String = config.getString("apollo-billing.signal-db.host")
-    val signalDbPort: Int = config.getInt("apollo-billing.signal-db.port")
-    val signalDbName: String = config.getString("apollo-billing.signal-db.name")
-    val signalDbUser: String = config.getString("apollo-billing.signal-db.user")
-    val signalDbPassword: String = config.getString("apollo-billing.signal-db.password")
-    val signalDbSslmode: String = config.getString("apollo-billing.signal-db.sslmode")
-    val signalDbPoolMaxSize: Int = config.getInt("apollo-billing.signal-db.pool-max-size")
-    val signalDbIdleTimeoutMs: Long = config.getLong("apollo-billing.signal-db.idle-timeout-ms")
-    val signalDbConnectionTimeoutMs: Long = config.getLong("apollo-billing.signal-db.connection-timeout-ms")
-    val signalDbStatementTimeoutMs: Long = config.getLong("apollo-billing.signal-db.statement-timeout-ms")
+data class SignalConfig(
+    val emailReceivedMeterId: String,
+)
 
-    // Signal usage meters provisioned in Polar. Blank means the balance is not exposed.
-    val signalEmailReceivedMeterId: String = config.getString("apollo-billing.signal.email-received-meter-id")
+data class RedisConfig(
+    val host: String,
+    val port: Int,
+    val password: String,
+    val database: Int,
+)
 
-    // Redis
-    val redisHost: String = config.getString("apollo-billing.redis.host")
-    val redisPort: Int = config.getInt("apollo-billing.redis.port")
-    val redisPassword: String = config.getString("apollo-billing.redis.password")
-    val redisDb: Int = config.getInt("apollo-billing.redis.db")
+private fun Config.toPolarConfig() =
+    PolarConfig(
+        webhookSecret = getString("webhook-secret"),
+        apiKey = getString("api-key"),
+        apiBaseUrl = getString("api-base-url"),
+        requestTimeoutMs = getLong("request-timeout-ms"),
+    )
+
+private fun Config.toPlatformConfig() =
+    PlatformConfig(
+        url = getString("url"),
+        clientId = getString("client-id"),
+        clientSecret = getString("client-secret"),
+    )
+
+private fun Config.toIamConfig(platformUrl: String): IamConfig {
+    val normalizedPlatformUrl = platformUrl.trimEnd('/')
+
+    return IamConfig(
+        jwksUrl = getString("auth-jwks-url")
+            .ifBlank {
+                normalizedPlatformUrl
+                    .takeIf(String::isNotBlank)
+                    ?.let { "$it/auth/jwks" }
+                    .orEmpty()
+            },
+        allowedIssuers = getStringSet("issuer-url")
+            .ifEmpty { normalizedPlatformUrl.toFallbackSet() },
+        validAudiences = getStringSet("valid-audiences")
+            .ifEmpty { normalizedPlatformUrl.toFallbackSet() },
+        serviceClientIds = getStringSet("service-client-ids"),
+        requestTimeoutMs = getLong("request-timeout-ms"),
+    )
+}
+
+private fun Config.toDatabaseConfig(provider: String): DatabaseConfig =
+    DatabaseConfig(
+        host = getString("host"),
+        port = getInt("port"),
+        name = getString("name"),
+        user = getString("user"),
+        password = getString("password"),
+        sslMode = resolveSslMode(
+            configuredMode = getString("sslmode"),
+            provider = provider,
+        ),
+        pool = toDatabasePoolConfig(),
+    )
+
+private fun Config.toDatabasePoolConfig() =
+    DatabasePoolConfig(
+        maxSize = getInt("pool-max-size"),
+        idleTimeoutMs = getLong("idle-timeout-ms"),
+        connectionTimeoutMs = getLong("connection-timeout-ms"),
+        statementTimeoutMs = getLong("statement-timeout-ms"),
+    )
+
+private fun Config.toSignalConfig() =
+    SignalConfig(
+        emailReceivedMeterId = getString("email-received-meter-id"),
+    )
+
+private fun Config.toRedisConfig() =
+    RedisConfig(
+        host = getString("host"),
+        port = getInt("port"),
+        password = getString("password"),
+        database = getInt("db"),
+    )
+
+private fun Config.getStringSet(path: String): Set<String> =
+    getString(path)
+        .splitToSequence(',')
+        .map(String::trim)
+        .filter(String::isNotEmpty)
+        .toSet()
+
+private fun String.toFallbackSet(): Set<String> =
+    takeIf(String::isNotBlank)?.let(::setOf).orEmpty()
+
+private fun resolveSslMode(
+    configuredMode: String,
+    provider: String,
+): String {
+    val sslMode = configuredMode.ifBlank { "disable" }
+
+    return if (sslMode.equals("disable", ignoreCase = true)) {
+        "disable"
+    } else {
+        "require"
+    }
 }
