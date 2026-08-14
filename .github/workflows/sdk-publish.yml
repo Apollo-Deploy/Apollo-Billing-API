@@ -42,6 +42,7 @@ jobs:
       # Offline OpenAPI export consumed by scripts/generate-sdk.sh → ./gradlew run.
       APOLLO_BILLING_ENV: development
       TESSERACT_PUBLISH_TARGETS: ${{ inputs.targets || 'typescript,kotlin' }}
+      GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx1536m -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8"
       SERVICE_AUTH_SECRET: ci-build-secret
       POLAR_WEBHOOK_SECRET: ci-build-secret
       # Publishing credentials (configure as repository secrets).
