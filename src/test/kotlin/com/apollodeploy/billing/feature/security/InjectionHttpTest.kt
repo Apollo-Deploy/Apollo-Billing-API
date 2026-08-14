@@ -9,7 +9,7 @@ import com.apollodeploy.billing.feature.usage.api.usageIngestRoutes
 import com.apollodeploy.billing.feature.usage.application.UsageIngestService
 import com.apollodeploy.billing.feature.usage.domain.UsageIngestResponse
 import com.apollodeploy.billing.support.billingTestApplication
-import com.apollodeploy.billing.support.noAuthInternalRoutes
+import com.apollodeploy.billing.support.machineAuthenticatedRoutes
 import com.apollodeploy.billing.support.validServiceToken
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -48,7 +48,7 @@ class InjectionHttpTest {
     @Test
     fun `SQL injection in orgId - single quote does not cause 500`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { enforceRoutes(enforceController) } },
+            routes = { machineAuthenticatedRoutes { enforceRoutes(enforceController) } },
         ) {
             coEvery { enforceService.enforce(any(), any()) } returns EnforceResult.Allowed
 
@@ -65,7 +65,7 @@ class InjectionHttpTest {
     @Test
     fun `SQL injection in orgId - UNION SELECT does not cause 500`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { enforceRoutes(enforceController) } },
+            routes = { machineAuthenticatedRoutes { enforceRoutes(enforceController) } },
         ) {
             coEvery { enforceService.enforce(any(), any()) } returns EnforceResult.Allowed
 
@@ -81,7 +81,7 @@ class InjectionHttpTest {
     @Test
     fun `SQL injection in appSlug - DROP TABLE does not execute`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { enforceRoutes(enforceController) } },
+            routes = { machineAuthenticatedRoutes { enforceRoutes(enforceController) } },
         ) {
             coEvery { enforceService.enforce(any(), any()) } returns EnforceResult.Allowed
 
@@ -97,7 +97,7 @@ class InjectionHttpTest {
     @Test
     fun `SQL injection in resource field of quota check`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { enforceRoutes(enforceController) } },
+            routes = { machineAuthenticatedRoutes { enforceRoutes(enforceController) } },
         ) {
             coEvery { enforceService.enforce(any(), any()) } returns EnforceResult.Allowed
 
@@ -113,7 +113,7 @@ class InjectionHttpTest {
     @Test
     fun `SQL injection in eventKey of usage ingest`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { usageIngestRoutes(usageController) } },
+            routes = { machineAuthenticatedRoutes { usageIngestRoutes(usageController) } },
         ) {
             coEvery { usageService.ingest(any()) } returns UsageIngestResponse(accepted = true)
 
@@ -131,7 +131,7 @@ class InjectionHttpTest {
     @Test
     fun `orgId as object instead of string returns 400`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { enforceRoutes(enforceController) } },
+            routes = { machineAuthenticatedRoutes { enforceRoutes(enforceController) } },
         ) {
             val r =
                 client.post("/internal/billing/enforce") {
@@ -145,7 +145,7 @@ class InjectionHttpTest {
     @Test
     fun `orgId as array returns 400`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { enforceRoutes(enforceController) } },
+            routes = { machineAuthenticatedRoutes { enforceRoutes(enforceController) } },
         ) {
             val r =
                 client.post("/internal/billing/enforce") {
@@ -159,7 +159,7 @@ class InjectionHttpTest {
     @Test
     fun `quantity as string returns 400`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { usageIngestRoutes(usageController) } },
+            routes = { machineAuthenticatedRoutes { usageIngestRoutes(usageController) } },
         ) {
             val r =
                 client.post("/internal/billing/usage/ingest") {
@@ -173,7 +173,7 @@ class InjectionHttpTest {
     @Test
     fun `quantity as float is rejected or truncated safely`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { usageIngestRoutes(usageController) } },
+            routes = { machineAuthenticatedRoutes { usageIngestRoutes(usageController) } },
         ) {
             coEvery { usageService.ingest(any()) } returns UsageIngestResponse(accepted = true)
 
@@ -192,7 +192,7 @@ class InjectionHttpTest {
     @Test
     fun `zero-width characters in orgId do not bypass enforcement`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { enforceRoutes(enforceController) } },
+            routes = { machineAuthenticatedRoutes { enforceRoutes(enforceController) } },
         ) {
             coEvery { enforceService.enforce(any(), any()) } returns EnforceResult.Allowed
 
@@ -209,7 +209,7 @@ class InjectionHttpTest {
     @Test
     fun `RTL override character in appSlug does not cause issues`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { enforceRoutes(enforceController) } },
+            routes = { machineAuthenticatedRoutes { enforceRoutes(enforceController) } },
         ) {
             coEvery { enforceService.enforce(any(), any()) } returns EnforceResult.Allowed
 
@@ -225,7 +225,7 @@ class InjectionHttpTest {
     @Test
     fun `null bytes in orgId do not bypass enforcement`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { enforceRoutes(enforceController) } },
+            routes = { machineAuthenticatedRoutes { enforceRoutes(enforceController) } },
         ) {
             coEvery { enforceService.enforce(any(), any()) } returns EnforceResult.Allowed
 
@@ -243,7 +243,7 @@ class InjectionHttpTest {
     @Test
     fun `XML payload with JSON content type returns 400`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { enforceRoutes(enforceController) } },
+            routes = { machineAuthenticatedRoutes { enforceRoutes(enforceController) } },
         ) {
             val r =
                 client.post("/internal/billing/enforce") {
@@ -257,7 +257,7 @@ class InjectionHttpTest {
     @Test
     fun `multipart form-data content type returns 400 or 415`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { enforceRoutes(enforceController) } },
+            routes = { machineAuthenticatedRoutes { enforceRoutes(enforceController) } },
         ) {
             val r =
                 client.post("/internal/billing/enforce") {
@@ -271,7 +271,7 @@ class InjectionHttpTest {
     @Test
     fun `empty JSON object returns 400 (missing fields)`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { enforceRoutes(enforceController) } },
+            routes = { machineAuthenticatedRoutes { enforceRoutes(enforceController) } },
         ) {
             val r =
                 client.post("/internal/billing/enforce") {
@@ -285,7 +285,7 @@ class InjectionHttpTest {
     @Test
     fun `deeply nested JSON does not cause stack overflow`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { enforceRoutes(enforceController) } },
+            routes = { machineAuthenticatedRoutes { enforceRoutes(enforceController) } },
         ) {
             // 100 levels of nesting
             val nested = "{".repeat(100) + "\"a\":1" + "}".repeat(100)
@@ -304,7 +304,7 @@ class InjectionHttpTest {
     @Test
     fun `1MB payload does not crash the server`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { enforceRoutes(enforceController) } },
+            routes = { machineAuthenticatedRoutes { enforceRoutes(enforceController) } },
         ) {
             coEvery { enforceService.enforce(any(), any()) } returns EnforceResult.Allowed
 
@@ -322,7 +322,7 @@ class InjectionHttpTest {
     @Test
     fun `metadata with 10000 keys does not crash usage ingest`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { usageIngestRoutes(usageController) } },
+            routes = { machineAuthenticatedRoutes { usageIngestRoutes(usageController) } },
         ) {
             coEvery { usageService.ingest(any()) } returns UsageIngestResponse(accepted = true)
 

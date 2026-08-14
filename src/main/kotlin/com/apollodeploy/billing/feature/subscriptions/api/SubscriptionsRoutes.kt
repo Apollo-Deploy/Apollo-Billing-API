@@ -3,8 +3,6 @@ package com.apollodeploy.billing.feature.subscriptions.api
 import com.apollodeploy.billing.feature.common.api.BillingApiErrorResponse
 import com.apollodeploy.billing.feature.subscriptions.domain.ActiveSubscriptionsResponse
 import com.apollodeploy.billing.feature.subscriptions.domain.CancelSubscriptionResponse
-import com.apollodeploy.tesseract.sdk
-import com.apollodeploy.tesseract.sdkDomain
 import io.github.smiley4.ktoropenapi.get
 import io.github.smiley4.ktoropenapi.post
 import io.ktor.http.HttpStatusCode
@@ -18,8 +16,6 @@ import io.ktor.server.routing.route
  * Requires orgId query parameter.
  */
 fun Route.subscriptionsRoutes(controller: SubscriptionsController) {
-    sdkDomain("/internal/billing/subscriptions", "billingSubscriptions", stability = "internal")
-
     route("/internal/billing") {
         get("/subscriptions", {
             operationId = "getActiveSubscriptions"
@@ -60,12 +56,6 @@ fun Route.subscriptionsRoutes(controller: SubscriptionsController) {
             }
         }) {
             controller.getActiveSubscriptions(call)
-        }.sdk {
-            operationId = "getActiveSubscriptions"
-            methodName = "getActiveSubscriptions"
-            internal = true
-            queryParam("orgId", required = true, description = "Organization ID to retrieve subscriptions for.")
-            response<ActiveSubscriptionsResponse>()
         }
 
         post("/subscriptions/{subscriptionId}/cancel", {
@@ -111,12 +101,6 @@ fun Route.subscriptionsRoutes(controller: SubscriptionsController) {
             }
         }) {
             controller.cancelSubscriptionAtPeriodEnd(call)
-        }.sdk {
-            operationId = "cancelSubscriptionAtPeriodEnd"
-            methodName = "cancelSubscriptionAtPeriodEnd"
-            internal = true
-            queryParam("orgId", required = true, description = "Organization ID that owns the subscription.")
-            response<CancelSubscriptionResponse>()
         }
     }
 }

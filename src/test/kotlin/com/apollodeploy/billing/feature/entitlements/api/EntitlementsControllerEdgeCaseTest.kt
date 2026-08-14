@@ -2,7 +2,7 @@ package com.apollodeploy.billing.feature.entitlements.api
 
 import com.apollodeploy.billing.feature.entitlements.application.EntitlementsService
 import com.apollodeploy.billing.support.billingTestApplication
-import com.apollodeploy.billing.support.noAuthInternalRoutes
+import com.apollodeploy.billing.support.machineAuthenticatedRoutes
 import io.ktor.client.request.get
 import io.ktor.http.HttpStatusCode
 import io.mockk.mockk
@@ -24,7 +24,7 @@ class EntitlementsControllerEdgeCaseTest {
     @Test
     fun `GET entitlements without orgId path segment returns non-200`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { entitlementsRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { entitlementsRoutes(controller) } },
         ) {
             val response = client.get("/internal/billing/entitlements/signal")
 
@@ -41,7 +41,7 @@ class EntitlementsControllerEdgeCaseTest {
     @Test
     fun `GET entitlements without appSlug and orgId path segments returns non-200`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { entitlementsRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { entitlementsRoutes(controller) } },
         ) {
             val response = client.get("/internal/billing/entitlements")
 
@@ -57,7 +57,7 @@ class EntitlementsControllerEdgeCaseTest {
     @Test
     fun `GET entitlements with valid path and no Authorization header returns HTTP 401`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { entitlementsRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { entitlementsRoutes(controller) } },
         ) {
             val response = client.get("/internal/billing/entitlements/signal/org_1")
 

@@ -142,41 +142,26 @@ check: lint test
 
 # ── SDK ───────────────────────────────────────────────────────────────────────
 
-.PHONY: sdk sdk-ts sdk-java sdk-publish sdk-publish-java sdk-publish-ts sdk-codeartifact sdk-manifest require-sdk-version
+.PHONY: sdk sdk-publish sdk-publish-kotlin sdk-publish-typescript require-sdk-version
 
-## sdk           — Generate TypeScript + Java SDKs
+## sdk           — Export OpenAPI and generate all SDKs locally
 sdk:
-	TESSERACT_TARGETS=typescript,java TESSERACT_PACKAGE_VERSION="$(SDK_VERSION)" TESSERACT_COMMAND=@apollo-deploy/tesseract scripts/generate-sdk.sh
+	TESSERACT_PACKAGE_VERSION="$(SDK_VERSION)" scripts/generate-sdk.sh
 
-## sdk-ts        — Generate TypeScript SDK only
-sdk-ts:
-	TESSERACT_TARGETS=typescript TESSERACT_PACKAGE_VERSION="$(SDK_VERSION)" TESSERACT_COMMAND=@apollo-deploy/tesseract scripts/generate-sdk.sh
+## sdk-publish   — Export OpenAPI, generate all SDKs, and publish them (SDK_VERSION required)
+sdk-publish: require-sdk-version
+	TESSERACT_PUBLISH=1 TESSERACT_PACKAGE_VERSION="$(SDK_VERSION)" scripts/generate-sdk.sh
 
-## sdk-java      — Generate Java SDK only
-sdk-java:
-	TESSERACT_TARGETS=java TESSERACT_PACKAGE_VERSION="$(SDK_VERSION)" TESSERACT_COMMAND=@apollo-deploy/tesseract scripts/generate-sdk.sh
+## sdk-publish-kotlin — Publish only the Kotlin/JVM SDK to Maven Central (SDK_VERSION required)
+sdk-publish-kotlin: require-sdk-version
+	TESSERACT_PUBLISH=1 TESSERACT_PUBLISH_TARGETS=kotlin TESSERACT_PACKAGE_VERSION="$(SDK_VERSION)" scripts/generate-sdk.sh
 
-## sdk-publish   — Publish TypeScript + Java SDKs (SDK_VERSION required)
-sdk-publish: require-sdk-version sdk-codeartifact
-	TESSERACT_PUBLISH=1 TESSERACT_TARGETS=typescript,java TESSERACT_PACKAGE_VERSION="$(SDK_VERSION)" scripts/generate-sdk.sh
-
-## sdk-publish-java — Publish Java SDK only
-sdk-publish-java: require-sdk-version sdk-codeartifact
-	TESSERACT_PUBLISH=1 TESSERACT_TARGETS=java TESSERACT_PACKAGE_VERSION="$(SDK_VERSION)" scripts/generate-sdk.sh
-
-## sdk-publish-ts — Publish TypeScript SDK only
-sdk-publish-ts: require-sdk-version
-	TESSERACT_PUBLISH=1 TESSERACT_TARGETS=typescript TESSERACT_PACKAGE_VERSION="$(SDK_VERSION)" scripts/generate-sdk.sh
-
-sdk-codeartifact:
-	scripts/setup-codeartifact-maven-env.sh
+## sdk-publish-typescript — Publish only the TypeScript SDK to npm (SDK_VERSION required)
+sdk-publish-typescript: require-sdk-version
+	TESSERACT_PUBLISH=1 TESSERACT_PUBLISH_TARGETS=typescript TESSERACT_PACKAGE_VERSION="$(SDK_VERSION)" scripts/generate-sdk.sh
 
 require-sdk-version:
 	@[ -n "$(SDK_VERSION)" ] || { echo "Set SDK_VERSION: make sdk-publish SDK_VERSION=1.0.8"; exit 1; }
-
-## sdk-manifest  — Export Tesseract manifest only
-sdk-manifest:
-	TESSERACT_MANIFEST_ONLY=1 scripts/generate-sdk.sh
 
 # ── Misc ──────────────────────────────────────────────────────────────────────
 

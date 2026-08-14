@@ -1,81 +1,33 @@
 # Apollo Billing SDKs
 
-Apollo Billing SDKs are generated from the billing API route manifest. Internal apps should use these SDKs from their backend only. Do not call Apollo Billing directly from browser code, because service JWTs and CodeArtifact tokens must stay server-side.
+Apollo Billing SDKs are generated from Billing's exported OpenAPI 3.1 contract. Apps should use these SDKs from their backend only. Do not call Apollo Billing directly from browser code, because service JWTs must stay server-side.
 
 ## Packages
 
 | SDK | Package | Status |
 | --- | --- | --- |
-| Kotlin/JVM | `com.apollodeploy:billing-sdk` | Published privately to AWS CodeArtifact |
+| Kotlin/JVM | `com.apollodeploy:billing-sdk` | Published publicly to Maven Central |
 | TypeScript | `@apollo-deploy/billing-sdk` | Generated in `sdk/typescript`; publish with the repo npm flow when needed |
 
-Current private Kotlin/JVM version:
+Latest verified public Kotlin/JVM version:
 
 ```kotlin
-implementation("com.apollodeploy:billing-sdk:1.0.7")
+implementation("com.apollodeploy:billing-sdk:1.0.3")
 ```
 
 ## Kotlin/JVM Install
 
-Internal apps need access to the private AWS CodeArtifact Maven repository before Gradle can resolve the SDK.
-
-### 1. Authenticate AWS CLI
-
-Use the AWS profile that has CodeArtifact read access:
-
-```bash
-aws login
-```
-
-If the app uses a named profile:
-
-```bash
-export AWS_PROFILE=apollo-codeartifact-publisher
-```
-
-### 2. Fetch a CodeArtifact token
-
-CodeArtifact auth tokens expire. Refresh this token before local builds, CI builds, or dependency updates:
-
-```bash
-export CODEARTIFACT_AUTH_TOKEN="$(
-  aws codeartifact get-authorization-token \
-    --region us-east-1 \
-    --domain apollo-deploy \
-    --domain-owner 753668406194 \
-    --query authorizationToken \
-    --output text
-)"
-```
-
-### 3. Add the private Maven repository
-
-In the internal app `build.gradle.kts`:
+Add Maven Central and the public dependency to the backend app's `build.gradle.kts`:
 
 ```kotlin
 repositories {
-    maven {
-        name = "apolloCodeArtifact"
-        url = uri("https://apollo-deploy-753668406194.d.codeartifact.us-east-1.amazonaws.com/maven/apollo-billing-sdk/")
-        credentials {
-            username = "aws"
-            password = providers.environmentVariable("CODEARTIFACT_AUTH_TOKEN").get()
-        }
-    }
     mavenCentral()
 }
 
 dependencies {
-    implementation("com.apollodeploy:billing-sdk:1.0.7")
+    implementation("com.apollodeploy:billing-sdk:<version>")
 }
 ```
-
-For CI, store AWS credentials or use an AWS role that can call:
-
-- `codeartifact:GetAuthorizationToken`
-- `codeartifact:GetRepositoryEndpoint`
-- `codeartifact:ReadFromRepository`
-- `sts:GetServiceBearerToken`
 
 ## Kotlin/JVM Usage
 
@@ -198,7 +150,7 @@ try {
 The TypeScript SDK is generated into `sdk/typescript`:
 
 ```bash
-make sdk-ts
+make sdk
 ```
 
 For local development in another internal app, install from a packed tarball:
@@ -213,7 +165,7 @@ npm pack
 Then in the internal app:
 
 ```bash
-npm install /path/to/apollo-deploy-billing-sdk-1.0.7.tgz
+npm install /path/to/apollo-deploy-billing-sdk-1.6.0.tgz
 ```
 
 Catalog usage:
@@ -231,10 +183,10 @@ const dedicatedIpAddon = catalog.products.find(
 );
 ```
 
-When a private npm registry is configured, publish with:
+Publish both SDKs through the release workflow:
 
 ```bash
-NPM_TOKEN=... TESSERACT_PUBLISH=1 TESSERACT_TARGETS=typescript scripts/generate-sdk.sh
+NPM_TOKEN=... make sdk-publish SDK_VERSION=<next-version>
 ```
 
 ## TypeScript Usage
@@ -307,35 +259,23 @@ try {
 
 ## Publishing A New Kotlin/JVM Version
 
-Refresh the private CodeArtifact Maven token:
+Generate both SDKs and publish the Kotlin/JVM package:
 
 ```bash
-make sdk-codeartifact
-```
-
-Generate and publish a new version:
-
-```bash
-TESSERACT_PUBLISH=1 TESSERACT_TARGETS=java TESSERACT_PACKAGE_VERSION=<next-version> scripts/generate-sdk.sh
+make sdk-publish-kotlin SDK_VERSION=<next-version>
 ```
 
 Verify the package:
 
 ```bash
-aws codeartifact list-package-versions \
-  --region us-east-1 \
-  --domain apollo-deploy \
-  --domain-owner 753668406194 \
-  --repository apollo-billing-sdk \
-  --format maven \
-  --namespace com.apollodeploy \
-  --package billing-sdk
+curl --fail --silent --show-error \
+  https://repo1.maven.org/maven2/com/apollodeploy/billing-sdk/<version>/billing-sdk-<version>.pom
 ```
 
 ## Security Rules
 
 - Keep `APOLLO_BILLING_SERVICE_JWT` on backend servers only.
-- Keep CodeArtifact tokens in developer shells, CI secrets, or backend build environments only.
+- Keep Maven Central Portal and GPG signing credentials in maintainer shells or CI secrets only.
 - Do not expose billing SDK calls through browser requests without your backend authorizing the user and organization first.
 - Use idempotency keys for usage ingestion so retries do not double-count usage.
 - Treat billing enforcement as a pre-check and usage ingestion as a post-work accounting event.

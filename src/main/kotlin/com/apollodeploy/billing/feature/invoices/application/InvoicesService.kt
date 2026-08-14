@@ -30,15 +30,19 @@ class InvoicesService(
         return result
     }
 
-    suspend fun getInvoice(invoiceId: String): GetInvoiceResult {
-        val result = invoicesRepo.getInvoice(invoiceId)
+    suspend fun getInvoice(
+        orgId: String,
+        invoiceId: String,
+    ): GetInvoiceResult {
+        val result = invoicesRepo.getInvoice(orgId, invoiceId)
         if (result.value == null) {
             return if (result.statusCode == 404) {
                 GetInvoiceResult.NotFound(invoiceId)
             } else {
                 logger.error(
-                    "[billing:invoices] failed to fetch invoice id={} status={} body={}",
+                    "[billing:invoices] failed to fetch invoice id={} org={} status={} body={}",
                     invoiceId,
+                    orgId,
                     result.statusCode,
                     result.errorBody,
                 )
@@ -48,13 +52,21 @@ class InvoicesService(
         return GetInvoiceResult.Found(InvoiceDetailResponse(invoice = result.value))
     }
 
-    suspend fun getInvoiceMeterUsage(invoiceId: String): GetInvoiceMeterUsageResult {
-        val result = invoicesRepo.getInvoiceMeterUsage(invoiceId)
+    suspend fun getInvoiceMeterUsage(
+        orgId: String,
+        invoiceId: String,
+    ): GetInvoiceMeterUsageResult {
+        val result = invoicesRepo.getInvoiceMeterUsage(orgId, invoiceId)
         if (result.value == null) {
             return if (result.statusCode == 404) {
                 GetInvoiceMeterUsageResult.NotFound(invoiceId)
             } else {
-                logger.error("[billing:invoices] failed to fetch meter usage id={} status={}", invoiceId, result.statusCode)
+                logger.error(
+                    "[billing:invoices] failed to fetch meter usage id={} org={} status={}",
+                    invoiceId,
+                    orgId,
+                    result.statusCode,
+                )
                 GetInvoiceMeterUsageResult.PolarUnavailable
             }
         }

@@ -12,6 +12,8 @@ import com.apollodeploy.billing.feature.customer.domain.SetDefaultPaymentMethodR
 import com.apollodeploy.billing.feature.customer.domain.UpdateCustomerBillingInfoRequest
 import com.apollodeploy.billing.feature.customer.domain.UpdateCustomerBillingInfoResponse
 import com.apollodeploy.billing.feature.customer.domain.hasAnyUpdate
+import com.apollodeploy.billing.feature.customer.domain.toCustomerBillingProfile
+import com.apollodeploy.billing.feature.customer.domain.toCustomerPaymentMethodsPage
 import com.apollodeploy.billing.feature.customer.infrastructure.persistence.CustomerBillingRepo
 import com.apollodeploy.billing.infrastructure.audit.AuditEvent
 import com.apollodeploy.billing.infrastructure.audit.AuditLogClient
@@ -62,7 +64,9 @@ class CustomerBillingService(
                         },
                 ),
             )
-            CustomerBillingResult.Success(UpdateCustomerBillingInfoResponse(result.value))
+            CustomerBillingResult.Success(
+                UpdateCustomerBillingInfoResponse(result.value.toCustomerBillingProfile()),
+            )
         } else {
             auditLogClient.log(
                 AuditEvent(
@@ -93,7 +97,11 @@ class CustomerBillingService(
         }
 
         val result = repository.listCustomerPaymentMethods(orgId, page, limit, memberId)
-        return result.value?.let { CustomerBillingResult.Success(ListCustomerPaymentMethodsResponse(it)) }
+        return result.value?.let {
+            CustomerBillingResult.Success(
+                ListCustomerPaymentMethodsResponse(it.toCustomerPaymentMethodsPage()),
+            )
+        }
             ?: CustomerBillingResult.PolarFailure(
                 fallbackCode = "billing.payment_methods_unavailable",
                 statusCode = result.statusCode,
@@ -266,7 +274,9 @@ class CustomerBillingService(
                     riskLevel = AuditRiskLevel.MEDIUM,
                 ),
             )
-            CustomerBillingResult.Success(SetDefaultPaymentMethodResponse(result.value))
+            CustomerBillingResult.Success(
+                SetDefaultPaymentMethodResponse(result.value.toCustomerBillingProfile()),
+            )
         } else {
             auditLogClient.log(
                 AuditEvent(

@@ -5,7 +5,7 @@ import com.apollodeploy.billing.feature.checkout.domain.CreateCheckoutRequest
 import com.apollodeploy.billing.feature.checkout.domain.CreateCheckoutResponse
 import com.apollodeploy.billing.feature.checkout.domain.CreateCheckoutResult
 import com.apollodeploy.billing.support.billingTestApplication
-import com.apollodeploy.billing.support.noAuthInternalRoutes
+import com.apollodeploy.billing.support.machineAuthenticatedRoutes
 import com.apollodeploy.billing.support.validServiceToken
 import io.kotest.property.Arb
 import io.kotest.property.arbitrary.filter
@@ -37,7 +37,7 @@ class CheckoutControllerTest {
     @Test
     fun `POST checkout without Authorization header returns HTTP 401`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { checkoutRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { checkoutRoutes(controller) } },
         ) {
             val response =
                 client.post("/internal/billing/checkout") {
@@ -51,7 +51,7 @@ class CheckoutControllerTest {
     @Test
     fun `POST checkout Created returns HTTP 200 with id, url, productKind fields`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { checkoutRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { checkoutRoutes(controller) } },
         ) {
             coEvery { checkoutService.createCheckout(any()) } returns
                 CreateCheckoutResult.Created(
@@ -80,7 +80,7 @@ class CheckoutControllerTest {
     @Test
     fun `POST checkout UnknownProduct returns HTTP 422 with billing_unknown_product code`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { checkoutRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { checkoutRoutes(controller) } },
         ) {
             coEvery { checkoutService.createCheckout(any()) } returns
                 CreateCheckoutResult.UnknownProduct(appSlug = "signal", productSlug = "signal-pro")
@@ -100,7 +100,7 @@ class CheckoutControllerTest {
     @Test
     fun `POST checkout Unavailable returns HTTP 502 with billing_checkout_unavailable code`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { checkoutRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { checkoutRoutes(controller) } },
         ) {
             coEvery { checkoutService.createCheckout(any()) } returns CreateCheckoutResult.Unavailable
 
@@ -133,7 +133,7 @@ class CheckoutControllerTest {
             forAll(nonBlankString, nonBlankString, nonBlankString) { id, url, productKind ->
                 var passed = false
                 billingTestApplication(
-                    routes = { noAuthInternalRoutes { checkoutRoutes(controller) } },
+                    routes = { machineAuthenticatedRoutes { checkoutRoutes(controller) } },
                 ) {
                     coEvery { checkoutService.createCheckout(any<CreateCheckoutRequest>()) } returns
                         CreateCheckoutResult.Created(

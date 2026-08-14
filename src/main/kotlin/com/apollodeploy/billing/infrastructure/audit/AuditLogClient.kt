@@ -2,23 +2,18 @@ package com.apollodeploy.billing.infrastructure.audit
 
 import io.ktor.client.HttpClient
 import io.ktor.client.request.bearerAuth
-import io.ktor.client.request.forms.submitForm
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
-import io.ktor.http.parameters
+import com.apollodeploy.oauth.m2m.client.MachineOAuthClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import org.slf4j.LoggerFactory
-import java.util.concurrent.atomic.AtomicLong
-import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Apollo Billing — platform audit-log client.
@@ -35,8 +30,7 @@ import java.util.concurrent.atomic.AtomicReference
 class AuditLogClient(
     private val httpClient: HttpClient,
     private val platformUrl: String,
-    private val clientId: String,
-    private val clientSecret: String,
+    private val m2mClient: MachineOAuthClient,
     private val appSlug: String = "billing",
     private val enabled: Boolean = true,
 ) {
@@ -51,57 +45,6 @@ class AuditLogClient(
             ignoreUnknownKeys = true
             explicitNulls = false
         }
-
-    // ─── Token cache ──────────────────────────────────────────────────────────
-
-    private data class CachedToken(
-        val accessToken: String,
-        val expiresAtMs: Long,
-    )
-
-    private val cachedToken = AtomicReference<CachedToken?>(null)
-    private val tokenRefreshLock = AtomicLong(0L) // 0 = available
-
-    /** Returns a valid bearer token, refreshing it if within 60 s of expiry. */
-    private suspend fun getToken(): String? {
-        val now = System.currentTimeMillis()
-        val current = cachedToken.get()
-        if (current != null && current.expiresAtMs - now > 60_000) return current.accessToken
-
-        return try {
-            val response =
-                httpClient.submitForm(
-                    url = "$platformUrl/auth/oauth2/token",
-                    formParameters =
-                        parameters {
-                            append("grant_type", "client_credentials")
-                            append("client_id", clientId)
-                            append("client_secret", clientSecret)
-                            append("resource", platformUrl)
-                        },
-                )
-
-            if (!response.status.isSuccess()) {
-                logger.warn(
-                    "[billing:audit] token request failed status={} body={}",
-                    response.status.value,
-                    runCatching { response.bodyAsText() }.getOrElse { "" },
-                )
-                return null
-            }
-
-            val body = json.decodeFromString<JsonObject>(response.bodyAsText())
-            val accessToken = body["access_token"]?.jsonPrimitive?.content ?: return null
-            val expiresIn = body["expires_in"]?.jsonPrimitive?.content?.toLongOrNull() ?: 3600L
-
-            val newToken = CachedToken(accessToken, now + expiresIn * 1000L)
-            cachedToken.set(newToken)
-            accessToken
-        } catch (e: Exception) {
-            logger.warn("[billing:audit] token request exception: {}", e.message)
-            null
-        }
-    }
 
     // ─── Public API ───────────────────────────────────────────────────────────
 
@@ -120,9 +63,8 @@ class AuditLogClient(
     // ─── Internal send ────────────────────────────────────────────────────────
 
     private suspend fun sendBatch(events: List<AuditEvent>) {
-        val token = getToken() ?: return
-
         try {
+            val token = m2mClient.accessToken()
             val url = "$platformUrl/internal/apps/$appSlug/audit-logs/batch"
             val response =
                 httpClient.post(url) {
@@ -148,8 +90,8 @@ class AuditLogClient(
 
     private fun isConfigured(): Boolean {
         if (!enabled) return false
-        if (platformUrl.isBlank() || clientId.isBlank() || clientSecret.isBlank()) {
-            logger.debug("[billing:audit] not configured (PLATFORM_URL / PLATFORM_CLIENT_ID / PLATFORM_CLIENT_SECRET missing) — skipping")
+        if (platformUrl.isBlank()) {
+            logger.debug("[billing:audit] not configured (PLATFORM_URL missing) — skipping")
             return false
         }
         return true

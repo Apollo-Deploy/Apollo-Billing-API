@@ -7,7 +7,7 @@ import kotlinx.serialization.Serializable
 data class PolarBillingAddressInput(
     val line1: String? = null,
     val line2: String? = null,
-    @SerialName("postal_code") val postalCode: String? = null,
+    val postalCode: String? = null,
     val city: String? = null,
     val state: String? = null,
     val country: String? = null,

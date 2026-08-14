@@ -77,7 +77,7 @@ implemented manually inside internal apps:
   products, checkout, customer billing details, payment methods, or metered
   usage.
 - Do not create checkout sessions in browser code.
-- Do not expose Polar API keys, CodeArtifact tokens, service JWTs, or billing
+- Do not expose Polar API keys, service JWTs, Maven publishing credentials, or billing
   secrets to browsers, mobile apps, logs, analytics tools, or customer-facing
   error payloads.
 - Do not hardcode Polar product IDs, meter IDs, plan prices, or entitlement
@@ -144,9 +144,8 @@ Use the generated SDKs instead of writing raw HTTP calls in each app:
 - Kotlin/JVM: `com.apollodeploy:billing-sdk`
 - TypeScript: `@apollo-deploy/billing-sdk`
 
-The Kotlin/JVM SDK is published privately to AWS CodeArtifact. Installation,
-CodeArtifact token setup, and publish instructions are in
-[SDK README](sdk-readme.md).
+The Kotlin/JVM SDK is published publicly to Maven Central. Installation and
+release instructions are in [SDK README](sdk-readme.md).
 
 ## Service-to-Service Authentication
 
@@ -218,17 +217,20 @@ against the platform's public JWKS — no shared secret required.
 ### SDK client setup (Kotlin — apollo-signal-api pattern)
 
 The Kotlin SDK client is rebuilt whenever the cached OAuth token rotates (the
-`OAuthM2mClient` handles refresh automatically):
+`MachineOAuthClient` handles refresh automatically):
 
 ```kotlin
-// OAuthM2mClient fetches and caches the client_credentials JWT.
-val m2mClient = OAuthM2mClient(
-    httpClient = httpClient,
-    platformUrl = System.getenv("PLATFORM_URL"),
-    clientId = System.getenv("PLATFORM_CLIENT_ID"),
-    clientSecret = System.getenv("PLATFORM_CLIENT_SECRET"),
-    audienceUrl = System.getenv("PLATFORM_AUDIENCE_URL"),
-)
+val platformUrl = System.getenv("PLATFORM_URL")
+// MachineOAuthClient fetches and caches the client_credentials JWT.
+val m2mClient = MachineOAuthClient {
+    httpClient(httpClient)
+    tokenEndpoint("${platformUrl.trimEnd('/')}/auth/oauth2/token")
+    clientId(System.getenv("PLATFORM_CLIENT_ID"))
+    clientSecret(System.getenv("PLATFORM_CLIENT_SECRET"))
+    audience(System.getenv("PLATFORM_AUDIENCE_URL").ifBlank { platformUrl })
+    clientSecretPost()
+    if (platformUrl.startsWith("http://")) allowInsecureHttp()
+}
 
 // ApolloBillingClientProvider rebuilds the SDK client when the token rotates.
 val billingProvider = ApolloBillingClientProvider(
@@ -243,7 +245,7 @@ val entitlements = sdk.billingEntitlements.getBillingEntitlements("signal", orgI
 
 ### Token lifetime and rotation
 
-Tokens expire in 3600 seconds (1 hour). `OAuthM2mClient` refreshes the token
+Tokens expire in 3600 seconds (1 hour). `MachineOAuthClient` refreshes the token
 60 seconds before expiry. There is no shared secret to rotate — to revoke a
 service's access, remove its `client_id` from `OAUTH_SERVICE_CLIENT_IDS` on
 billing and `OAUTH_SERVICE_CLIENT_IDS` on the platform, then rotate the
@@ -585,10 +587,14 @@ import {
   createApolloBillingClient,
 } from "@apollo-deploy/billing-sdk";
 
-type BillingCheck =
-  | { type: "quota"; resource: string; limitKey: string }
-  | { type: "feature"; feature: string }
-  | { type: "meter"; meterKey: string; needed?: number };
+type BillingCheck = {
+  type: "quota" | "feature" | "meter";
+  resource?: string;
+  limitKey?: string;
+  feature?: string;
+  meterKey?: string;
+  needed?: number;
+};
 
 class BillingClient {
   constructor(private readonly appSlug: string) {}

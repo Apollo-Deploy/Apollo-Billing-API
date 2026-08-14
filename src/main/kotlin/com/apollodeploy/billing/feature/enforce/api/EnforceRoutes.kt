@@ -2,16 +2,12 @@ package com.apollodeploy.billing.feature.enforce.api
 
 import com.apollodeploy.billing.feature.common.api.BillingApiErrorResponse
 import com.apollodeploy.billing.feature.enforce.domain.*
-import com.apollodeploy.tesseract.sdk
-import com.apollodeploy.tesseract.sdkDomain
 import io.github.smiley4.ktoropenapi.post
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.route
 
 fun Route.enforceRoutes(controller: EnforceController) {
-    sdkDomain("/internal/billing/enforce", "billingEnforcement", stability = "internal")
-
     route("/internal/billing") {
         post("/enforce", {
             operationId = "enforceBillingCheck"
@@ -61,12 +57,6 @@ fun Route.enforceRoutes(controller: EnforceController) {
             }
         }) {
             controller.enforce(call)
-        }.sdk {
-            operationId = "enforceBillingCheck"
-            methodName = "enforceBillingCheck"
-            internal = true
-            requestBody<EnforceRequest>()
-            response<EnforceResponse>()
         }
     }
 }

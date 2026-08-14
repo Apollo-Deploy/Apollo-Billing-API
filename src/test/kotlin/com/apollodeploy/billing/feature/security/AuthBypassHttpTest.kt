@@ -1,10 +1,8 @@
 package com.apollodeploy.billing.feature.security
 
-import com.apollodeploy.billing.infrastructure.iam.OAuthServiceAuthException
 import com.apollodeploy.billing.infrastructure.polar.PolarWebhookVerifier
 import com.apollodeploy.billing.infrastructure.validation.UrlValidator
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -19,7 +17,7 @@ import kotlin.test.assertTrue
  *
  * Auth bypass tests for the OAuth guard itself are covered by:
  *   - InternalEndpointAuthTest (integration-level, valid JWT accepted)
- *   - The OAuthM2mInternalAuth plugin unit behavior
+ *   - the SDK `MachineOAuth` plugin behavior
  */
 class AuthBypassHttpTest {
     // ─── PolarWebhookVerifier — adversarial signature tests ───────────────────
@@ -280,17 +278,4 @@ class AuthBypassHttpTest {
         assertNull(UrlValidator.validateRedirectUrl("https://my.app.apollodeploy.com/return"))
     }
 
-    // ─── OAuthServiceAuthException — structure validation ─────────────────────
-
-    @Test
-    fun `OAuthServiceAuthException has billing prefixed code`() {
-        val ex = OAuthServiceAuthException()
-        assertTrue(ex.code.startsWith("billing."), "Expected 'billing.' prefix in code: ${ex.code}")
-    }
-
-    @Test
-    fun `OAuthServiceAuthException custom message is preserved`() {
-        val ex = OAuthServiceAuthException(message = "JWT signature mismatch")
-        assertEquals("JWT signature mismatch", ex.message)
-    }
 }

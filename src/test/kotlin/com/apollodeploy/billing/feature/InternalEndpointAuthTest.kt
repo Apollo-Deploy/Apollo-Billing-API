@@ -8,7 +8,9 @@ import com.apollodeploy.billing.feature.checkout.domain.CreateCheckoutResult
 import com.apollodeploy.billing.feature.customer.api.CustomerBillingController
 import com.apollodeploy.billing.feature.customer.api.customerBillingRoutes
 import com.apollodeploy.billing.feature.customer.application.CustomerBillingService
+import com.apollodeploy.billing.feature.customer.domain.CustomerBillingProfile
 import com.apollodeploy.billing.feature.customer.domain.CustomerBillingResult
+import com.apollodeploy.billing.feature.customer.domain.CustomerPaymentMethodsPage
 import com.apollodeploy.billing.feature.customer.domain.ListCustomerPaymentMethodsResponse
 import com.apollodeploy.billing.feature.customer.domain.UpdateCustomerBillingInfoResponse
 import com.apollodeploy.billing.feature.enforce.api.EnforceController
@@ -25,7 +27,8 @@ import com.apollodeploy.billing.feature.usage.api.usageIngestRoutes
 import com.apollodeploy.billing.feature.usage.application.UsageIngestService
 import com.apollodeploy.billing.feature.usage.domain.UsageIngestResponse
 import com.apollodeploy.billing.support.billingTestApplication
-import com.apollodeploy.billing.support.noAuthInternalRoutes
+import com.apollodeploy.billing.support.machineAuthenticatedRoutes
+import com.apollodeploy.billing.support.serviceToken
 import com.apollodeploy.billing.support.validServiceToken
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
@@ -39,16 +42,15 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.mockk.coEvery
 import io.mockk.mockk
-import kotlinx.serialization.json.buildJsonObject
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 
 /**
  * Property 1: Valid JWT is always accepted on any internal endpoint
  *
- * For any route registered under the /internal/ prefix and for any freshly signed JWT produced by
- * ServiceTokenSigner.sign(secret = "test-service-token-secret", issuer = "apollo-signal-api",
- * audience = "apollo-billing"), the HTTP response status SHALL NOT be 401.
+ * For any route registered under the /internal/ prefix and for a valid
+ * platform-issued EdDSA client-credentials JWT, the HTTP response SHALL NOT be 401.
  *
  * **Validates: Requirements 1.3**
  */
@@ -80,7 +82,7 @@ class InternalEndpointAuthTest {
     @Test
     fun `valid JWT is accepted on POST internal billing enforce`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { enforceRoutes(enforceController) } },
+            routes = { machineAuthenticatedRoutes { enforceRoutes(enforceController) } },
         ) {
             coEvery { enforceService.enforce(any(), any()) } returns EnforceResult.Allowed
 
@@ -101,7 +103,7 @@ class InternalEndpointAuthTest {
     @Test
     fun `valid JWT is accepted on GET internal billing entitlements`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { entitlementsRoutes(entitlementsController) } },
+            routes = { machineAuthenticatedRoutes { entitlementsRoutes(entitlementsController) } },
         ) {
             coEvery { entitlementsService.getEntitlements(any(), any()) } returns
                 EntitlementsResult.Found(
@@ -131,7 +133,7 @@ class InternalEndpointAuthTest {
     @Test
     fun `valid JWT is accepted on POST internal billing checkout`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { checkoutRoutes(checkoutController) } },
+            routes = { machineAuthenticatedRoutes { checkoutRoutes(checkoutController) } },
         ) {
             coEvery { checkoutService.createCheckout(any()) } returns
                 CreateCheckoutResult.Created(
@@ -160,10 +162,12 @@ class InternalEndpointAuthTest {
     @Test
     fun `valid JWT is accepted on PATCH internal billing customer billing-info`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { customerBillingRoutes(customerBillingController) } },
+            routes = { machineAuthenticatedRoutes { customerBillingRoutes(customerBillingController) } },
         ) {
             coEvery { customerBillingService.updateBillingInfo(any()) } returns
-                CustomerBillingResult.Success(UpdateCustomerBillingInfoResponse(buildJsonObject {}))
+                CustomerBillingResult.Success(
+                    UpdateCustomerBillingInfoResponse(CustomerBillingProfile(id = "cust_1")),
+                )
 
             val response =
                 client.patch("/internal/billing/customer/billing-info") {
@@ -182,10 +186,12 @@ class InternalEndpointAuthTest {
     @Test
     fun `valid JWT is accepted on GET internal billing customer payment-methods`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { customerBillingRoutes(customerBillingController) } },
+            routes = { machineAuthenticatedRoutes { customerBillingRoutes(customerBillingController) } },
         ) {
             coEvery { customerBillingService.listPaymentMethods(any(), any(), any()) } returns
-                CustomerBillingResult.Success(ListCustomerPaymentMethodsResponse(buildJsonObject {}))
+                CustomerBillingResult.Success(
+                    ListCustomerPaymentMethodsResponse(CustomerPaymentMethodsPage()),
+                )
 
             val response =
                 client.get("/internal/billing/customer/payment-methods?orgId=org_1") {
@@ -202,7 +208,7 @@ class InternalEndpointAuthTest {
     @Test
     fun `valid JWT is accepted on DELETE internal billing customer payment-method`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { customerBillingRoutes(customerBillingController) } },
+            routes = { machineAuthenticatedRoutes { customerBillingRoutes(customerBillingController) } },
         ) {
             coEvery { customerBillingService.deletePaymentMethod(any(), any()) } returns
                 CustomerBillingResult.Success(Unit)
@@ -222,7 +228,7 @@ class InternalEndpointAuthTest {
     @Test
     fun `valid JWT is accepted on POST internal billing usage ingest`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { usageIngestRoutes(usageIngestController) } },
+            routes = { machineAuthenticatedRoutes { usageIngestRoutes(usageIngestController) } },
         ) {
             coEvery { usageIngestService.ingest(any()) } returns UsageIngestResponse(accepted = true)
 
@@ -234,5 +240,42 @@ class InternalEndpointAuthTest {
                 }
 
             assertNotEquals(HttpStatusCode.Unauthorized, response.status)
+        }
+
+    @Test
+    fun `SDK verifier rejects malformed and mismatched machine tokens`() =
+        billingTestApplication(
+            routes = { machineAuthenticatedRoutes { enforceRoutes(enforceController) } },
+        ) {
+            val cases =
+                listOf(
+                    Triple("malformed", "not-a-jwt", HttpStatusCode.Unauthorized),
+                    Triple(
+                        "wrong issuer",
+                        serviceToken(issuer = "https://other.identity"),
+                        HttpStatusCode.Unauthorized,
+                    ),
+                    Triple(
+                        "wrong audience",
+                        serviceToken(audience = "other-api"),
+                        HttpStatusCode.Unauthorized,
+                    ),
+                    Triple(
+                        "wrong client",
+                        serviceToken(clientId = "other-client"),
+                        HttpStatusCode.Forbidden,
+                    ),
+                )
+
+            cases.forEach { (label, token, expectedStatus) ->
+                val response =
+                    client.post("/internal/billing/enforce") {
+                        header(HttpHeaders.Authorization, "Bearer $token")
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"orgId":"org_1","appSlug":"signal","check":{"type":"feature","feature":"deployments"}}""")
+                    }
+
+                assertEquals(expectedStatus, response.status, label)
+            }
         }
 }

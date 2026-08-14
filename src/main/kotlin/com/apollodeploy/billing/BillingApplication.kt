@@ -5,6 +5,7 @@ import com.apollodeploy.billing.feature.catalog.api.productCatalogRoutes
 import com.apollodeploy.billing.feature.checkout.api.checkoutRoutes
 import com.apollodeploy.billing.feature.customer.api.customerBillingRoutes
 import com.apollodeploy.billing.feature.docs.api.docsRoutes
+import com.apollodeploy.billing.feature.docs.api.generateOpenApiSpec
 import com.apollodeploy.billing.feature.enforce.api.enforceRoutes
 import com.apollodeploy.billing.feature.entitlements.api.entitlementsRoutes
 import com.apollodeploy.billing.feature.health.api.healthRoutes
@@ -13,11 +14,10 @@ import com.apollodeploy.billing.feature.subscriptions.api.subscriptionsRoutes
 import com.apollodeploy.billing.feature.usage.api.usageIngestRoutes
 import com.apollodeploy.billing.feature.webhook.api.polarWebhookRoutes
 import com.apollodeploy.billing.infrastructure.config.AppConfig
-import com.apollodeploy.billing.infrastructure.iam.OAuthServiceAuthException
-import com.apollodeploy.billing.infrastructure.iam.oauthInternalRoutes
+import com.apollodeploy.oauth.m2m.ktor.MachineOAuth
+import com.apollodeploy.oauth.m2m.ktor.machineAuthenticated
+import com.apollodeploy.oauth.m2m.client.MachineOAuthClient
 import com.apollodeploy.billing.infrastructure.validation.InvalidRedirectUrlException
-import com.apollodeploy.tesseract.ManifestInfo
-import com.apollodeploy.tesseract.TesseractPlugin
 import io.github.smiley4.ktoropenapi.OpenApi
 import io.github.smiley4.ktoropenapi.config.AuthScheme
 import io.github.smiley4.ktoropenapi.config.AuthType
@@ -27,6 +27,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationStopped
+import io.ktor.server.application.ServerReady
 import io.ktor.server.application.install
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
@@ -38,6 +39,7 @@ import io.ktor.server.plugins.ratelimit.rateLimit
 import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.plugins.statuspages.exception
 import io.ktor.server.request.path
+import java.nio.file.Path
 import io.ktor.server.response.respond
 import io.ktor.server.routing.routing
 import kotlinx.serialization.Serializable
@@ -93,9 +95,10 @@ private data class ErrorResponse(
 )
 
 fun main() {
+    val openApiOutputPath = System.getenv("OPENAPI_EXPORT_PATH")?.takeIf { it.isNotBlank() }
     val assembly =
-        if (envFlag("TESSERACT_GENERATE")) {
-            AppAssembly.createForManifest()
+        if (openApiOutputPath != null) {
+            AppAssembly.createForOpenApiExport()
         } else {
             AppAssembly.create()
         }
@@ -106,6 +109,20 @@ fun main() {
         port = AppConfig.port,
     ) {
         configure(assembly)
+
+        if (openApiOutputPath != null) {
+            val application = this
+            monitor.subscribe(ServerReady) {
+                val path = Path.of(openApiOutputPath)
+                path.parent?.let { java.nio.file.Files.createDirectories(it) }
+                java.nio.file.Files.writeString(
+                    path,
+                    generateOpenApiSpec(application),
+                )
+                logger.info("OpenAPI spec exported to {}", path)
+                engine.stop(gracePeriodMillis = 0, timeoutMillis = 1_000)
+            }
+        }
     }.start(wait = true)
 }
 
@@ -118,9 +135,9 @@ fun Application.module() {
 
 private fun Application.configure(assembly: AppAssembly) {
     installCorePlugins()
+    installMachineOAuth(assembly)
     installOpenApi()
     installErrorHandling()
-    installTesseract()
     registerRoutes(assembly)
 
     monitor.subscribe(ApplicationStopped) {
@@ -178,6 +195,35 @@ private fun Application.installCorePlugins() {
     }
 }
 
+private fun Application.installMachineOAuth(assembly: AppAssembly) {
+    val issuer = AppConfig.iam.allowedIssuers
+        .firstOrNull()
+        ?: error("IAM issuer URL is not configured")
+    val allowedAudiences = AppConfig.iam.validAudiences
+        .takeIf(Set<String>::isNotEmpty)
+        ?: error("IAM valid audiences are not configured")
+    val jwksUrl = AppConfig.iam.jwksUrl
+        .takeIf(String::isNotBlank)
+        ?: error("IAM JWKS URL is not configured")
+    val serviceClientIds = AppConfig.iam.serviceClientIds
+        .takeIf(Set<String>::isNotEmpty)
+        ?: error("IAM service client IDs are not configured")
+    install(MachineOAuth) {
+        issuer(issuer)
+        audience(allowedAudiences.first())
+        audiences(*allowedAudiences.toTypedArray())
+        jwks { url = jwksUrl }
+        httpClient = assembly.httpClient
+        algorithms("EdDSA")
+        validate { principal ->
+            principal.clientId.value in serviceClientIds
+        }
+        if (issuer.startsWith("http://", ignoreCase = true) ||
+            jwksUrl.startsWith("http://", ignoreCase = true)
+        ) allowInsecureHttp()
+    }
+}
+
 private fun Application.installOpenApi() {
     install(OpenApi) {
         info {
@@ -229,7 +275,11 @@ private fun Application.installOpenApi() {
             }
         }
 
-        ignoredRouteSelectorClassNames += AUTH_ROUTE_SELECTOR
+        ignoredRouteSelectorClassNames +=
+            listOf(
+                AUTH_ROUTE_SELECTOR,
+                "io.ktor.server.plugins.ratelimit.RateLimitRouteSelector",
+            )
         outputFormat = OutputFormat.JSON
     }
 }
@@ -262,17 +312,6 @@ private fun openApiTags(path: List<String>): List<String> =
 
 private fun Application.installErrorHandling() {
     install(StatusPages) {
-        exception<OAuthServiceAuthException> { call, cause ->
-            call.respond(
-                status = HttpStatusCode.Unauthorized,
-                message =
-                    ErrorResponse(
-                        code = cause.code,
-                        message = cause.message,
-                    ),
-            )
-        }
-
         exception<InvalidRedirectUrlException> { call, cause ->
             call.respond(
                 status = HttpStatusCode.BadRequest,
@@ -303,33 +342,6 @@ private fun Application.installErrorHandling() {
     }
 }
 
-private fun Application.installTesseract() {
-    install(TesseractPlugin) {
-        info =
-            ManifestInfo(
-                title = API_TITLE,
-                version = API_VERSION,
-                description =
-                    "Server-to-server SDK for Apollo Deploy billing, entitlement, " +
-                    "checkout, usage, and customer billing operations.",
-                baseUrl = env("TESSERACT_BASE_URL", DEFAULT_BASE_URL),
-            )
-
-        packageName =
-            env(
-                "TESSERACT_PACKAGE_NAME",
-                "@apollo-deploy/billing-sdk",
-            )
-
-        packageVersion = envOrNull("TESSERACT_PACKAGE_VERSION")
-        clientName = env("TESSERACT_CLIENT_NAME", "ApolloBilling")
-        output = env("TESSERACT_SDK_OUTPUT", "./sdk")
-        language = env("TESSERACT_LANGUAGE", "typescript")
-        sdkStyle = env("TESSERACT_SDK_STYLE", "functional")
-        clientType = env("TESSERACT_CLIENT_TYPE", "internal")
-    }
-}
-
 private fun Application.registerRoutes(assembly: AppAssembly) {
     routing {
         healthRoutes(assembly.healthController)
@@ -341,7 +353,7 @@ private fun Application.registerRoutes(assembly: AppAssembly) {
             )
         }
 
-        oauthInternalRoutes(assembly.httpClient) {
+        machineAuthenticated {
             rateLimit(InternalRateLimit) {
                 enforceRoutes(assembly.enforceController)
                 entitlementsRoutes(assembly.entitlementsController)
@@ -360,20 +372,3 @@ private fun Application.registerRoutes(assembly: AppAssembly) {
         }
     }
 }
-
-private fun envFlag(name: String): Boolean {
-    val value = System.getenv(name) ?: return false
-
-    return value == "1" ||
-        value.equals("true", ignoreCase = true)
-}
-
-private fun env(
-    name: String,
-    default: String,
-): String =
-    envOrNull(name) ?: default
-
-private fun envOrNull(name: String): String? =
-    System.getenv(name)
-        ?.takeIf(String::isNotBlank)

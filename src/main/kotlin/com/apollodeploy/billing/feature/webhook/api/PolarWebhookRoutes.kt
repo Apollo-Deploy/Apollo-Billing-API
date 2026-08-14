@@ -1,10 +1,8 @@
 package com.apollodeploy.billing.feature.webhook.api
 
 import com.apollodeploy.billing.feature.common.api.BillingApiErrorResponse
+import com.apollodeploy.billing.feature.webhook.domain.PolarWebhookEventRequest
 import com.apollodeploy.billing.feature.webhook.domain.PolarWebhookResponse
-import com.apollodeploy.billing.infrastructure.polar.model.PolarWebhookEvent
-import com.apollodeploy.tesseract.sdk
-import com.apollodeploy.tesseract.sdkDomain
 import io.github.smiley4.ktoropenapi.post
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.routing.Route
@@ -20,15 +18,13 @@ import io.ktor.server.routing.route
  *   webhook-id, webhook-timestamp, webhook-signature
  */
 fun Route.polarWebhookRoutes(controller: PolarWebhookController) {
-    sdkDomain("/webhooks/polar", "polarWebhooks", stability = "internal")
-
     route("/webhooks") {
         post("/polar", {
             operationId = "receivePolarWebhook"
             summary = "Receive Polar webhook"
             description =
                 "Public Polar webhook endpoint. The request body is verified with Standard Webhooks headers before " +
-                "subscription/customer state is updated."
+                "subscription/customer state is updated. Event `data` is Polar-typed and parsed server-side from the raw body."
             tags("Webhooks")
             request {
                 headerParameter<String>("webhook-id") {
@@ -43,8 +39,10 @@ fun Route.polarWebhookRoutes(controller: PolarWebhookController) {
                     description = "Standard Webhooks HMAC signature supplied by Polar."
                     required = true
                 }
-                body<PolarWebhookEvent> {
-                    description = "Polar lifecycle event payload."
+                body<PolarWebhookEventRequest> {
+                    description =
+                        "Polar lifecycle event envelope. Full event `data` is accepted on the wire but " +
+                        "omitted from the SDK model because it is polymorphic per event type."
                     required = true
                 }
             }
@@ -70,12 +68,6 @@ fun Route.polarWebhookRoutes(controller: PolarWebhookController) {
             }
         }) {
             controller.receive(call)
-        }.sdk {
-            operationId = "receivePolarWebhook"
-            methodName = "receivePolarWebhook"
-            internal = true
-            requestBody<PolarWebhookEvent>()
-            response<PolarWebhookResponse>()
         }
     }
 }

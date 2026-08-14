@@ -3,7 +3,7 @@ package com.apollodeploy.billing.feature.usage.api
 import com.apollodeploy.billing.feature.usage.application.UsageIngestService
 import com.apollodeploy.billing.feature.usage.domain.UsageIngestResponse
 import com.apollodeploy.billing.support.billingTestApplication
-import com.apollodeploy.billing.support.noAuthInternalRoutes
+import com.apollodeploy.billing.support.machineAuthenticatedRoutes
 import com.apollodeploy.billing.support.validServiceToken
 import io.kotest.property.Arb
 import io.kotest.property.arbitrary.element
@@ -35,7 +35,7 @@ class UsageIngestControllerTest {
     @Test
     fun `POST usage ingest without Authorization header returns HTTP 401`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { usageIngestRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { usageIngestRoutes(controller) } },
         ) {
             val response =
                 client.post("/internal/billing/usage/ingest") {
@@ -49,7 +49,7 @@ class UsageIngestControllerTest {
     @Test
     fun `POST usage ingest accepted true returns HTTP 200 with accepted true`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { usageIngestRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { usageIngestRoutes(controller) } },
         ) {
             coEvery { usageIngestService.ingest(any()) } returns UsageIngestResponse(accepted = true)
 
@@ -68,7 +68,7 @@ class UsageIngestControllerTest {
     @Test
     fun `POST usage ingest accepted false returns HTTP 202 with accepted false`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { usageIngestRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { usageIngestRoutes(controller) } },
         ) {
             coEvery { usageIngestService.ingest(any()) } returns UsageIngestResponse(accepted = false, reason = "polar_unavailable")
 
@@ -99,7 +99,7 @@ class UsageIngestControllerTest {
             forAll(Arb.element(true, false)) { accepted ->
                 var passed = false
                 billingTestApplication(
-                    routes = { noAuthInternalRoutes { usageIngestRoutes(controller) } },
+                    routes = { machineAuthenticatedRoutes { usageIngestRoutes(controller) } },
                 ) {
                     coEvery { usageIngestService.ingest(any()) } returns UsageIngestResponse(accepted = accepted)
 

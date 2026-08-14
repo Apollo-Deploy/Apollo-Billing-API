@@ -6,7 +6,6 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.JsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -60,7 +59,7 @@ class UsageIngestServiceTest {
                     orgId = "org_1",
                     eventKey = "email.sent",
                     quantity = 42,
-                    metadata = mapOf("source" to JsonPrimitive("test")),
+                    metadata = mapOf("source" to "test"),
                 ),
             )
 
@@ -70,7 +69,7 @@ class UsageIngestServiceTest {
                     "email.sent",
                     42,
                     null,
-                    mapOf("source" to JsonPrimitive("test")),
+                    mapOf("source" to "test"),
                 )
             }
         }
@@ -106,7 +105,7 @@ class UsageIngestServiceTest {
                 orgId = "org_1",
                 eventKey = "signal.email.received",
                 quantity = 1,
-                metadata = mapOf("messageId" to JsonPrimitive("inmsg_1")),
+                metadata = mapOf("messageId" to "inmsg_1"),
             ),
         )
 

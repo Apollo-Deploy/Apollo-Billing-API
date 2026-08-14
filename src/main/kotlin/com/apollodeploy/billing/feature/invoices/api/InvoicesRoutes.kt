@@ -5,8 +5,6 @@ import com.apollodeploy.billing.feature.invoices.domain.GenerateInvoiceResponse
 import com.apollodeploy.billing.feature.invoices.domain.InvoiceDetailResponse
 import com.apollodeploy.billing.feature.invoices.domain.InvoiceMeterUsageResponse
 import com.apollodeploy.billing.feature.invoices.domain.PaginatedInvoicesResponse
-import com.apollodeploy.tesseract.sdk
-import com.apollodeploy.tesseract.sdkDomain
 import io.github.smiley4.ktoropenapi.get
 import io.github.smiley4.ktoropenapi.post
 import io.ktor.http.HttpStatusCode
@@ -22,8 +20,6 @@ import io.ktor.server.routing.route
  * POST /internal/billing/invoices/{invoiceId}/invoice   — trigger PDF invoice generation via Polar
  */
 fun Route.invoicesRoutes(controller: InvoicesController) {
-    sdkDomain("/internal/billing/invoices", "billingInvoices", stability = "internal")
-
     route("/internal/billing/invoices") {
         get("/{invoiceId}/meter-usage", {
             operationId = "getInvoiceMeterUsage"
@@ -37,11 +33,23 @@ fun Route.invoicesRoutes(controller: InvoicesController) {
                     description = "Polar order ID representing the invoice."
                     required = true
                 }
+                queryParameter<String>("orgId") {
+                    description = "Organization ID that owns the invoice."
+                    required = true
+                }
             }
             response {
                 code(HttpStatusCode.OK) {
                     description = "Invoice meter usage returned."
                     body<InvoiceMeterUsageResponse>()
+                }
+                code(HttpStatusCode.BadRequest) {
+                    description = "The required orgId query parameter is missing or blank."
+                    body<BillingApiErrorResponse>()
+                }
+                code(HttpStatusCode.Unauthorized) {
+                    description = "Missing, expired, or invalid internal service JWT."
+                    body<BillingApiErrorResponse>()
                 }
                 code(HttpStatusCode.NotFound) {
                     description = "No invoice exists with the given ID."
@@ -54,11 +62,6 @@ fun Route.invoicesRoutes(controller: InvoicesController) {
             }
         }) {
             controller.getInvoiceMeterUsage(call)
-        }.sdk {
-            operationId = "getInvoiceMeterUsage"
-            methodName = "getInvoiceMeterUsage"
-            internal = true
-            response<InvoiceMeterUsageResponse>()
         }
 
         get("/{invoiceId}", {
@@ -75,6 +78,10 @@ fun Route.invoicesRoutes(controller: InvoicesController) {
                     description = "Polar order ID representing the invoice."
                     required = true
                 }
+                queryParameter<String>("orgId") {
+                    description = "Organization ID that owns the invoice."
+                    required = true
+                }
             }
             response {
                 code(HttpStatusCode.OK) {
@@ -84,7 +91,7 @@ fun Route.invoicesRoutes(controller: InvoicesController) {
                     }
                 }
                 code(HttpStatusCode.BadRequest) {
-                    description = "Missing invoiceId path parameter."
+                    description = "Missing invoiceId path parameter or required orgId query parameter."
                     body<BillingApiErrorResponse>()
                 }
                 code(HttpStatusCode.Unauthorized) {
@@ -102,11 +109,6 @@ fun Route.invoicesRoutes(controller: InvoicesController) {
             }
         }) {
             controller.getInvoice(call)
-        }.sdk {
-            operationId = "getInvoice"
-            methodName = "getInvoice"
-            internal = true
-            response<InvoiceDetailResponse>()
         }
 
         get({
@@ -153,14 +155,6 @@ fun Route.invoicesRoutes(controller: InvoicesController) {
             }
         }) {
             controller.listInvoices(call)
-        }.sdk {
-            operationId = "listInvoices"
-            methodName = "listInvoices"
-            internal = true
-            queryParam("orgId", required = true, description = "Organization ID to retrieve invoices for.")
-            queryParam("page", type = "integer", description = "One-based page number.")
-            queryParam("limit", type = "integer", description = "Page size from 1 to 100.")
-            response<PaginatedInvoicesResponse>()
         }
 
         post("/{invoiceId}/invoice", {
@@ -211,12 +205,6 @@ fun Route.invoicesRoutes(controller: InvoicesController) {
             }
         }) {
             controller.generateInvoice(call)
-        }.sdk {
-            operationId = "generateInvoice"
-            methodName = "generateInvoice"
-            internal = true
-            queryParam("orgId", required = true, description = "Organization ID that owns the order.")
-            response<GenerateInvoiceResponse>()
         }
     }
 }

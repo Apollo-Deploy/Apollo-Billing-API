@@ -2,16 +2,12 @@ package com.apollodeploy.billing.feature.catalog.api
 
 import com.apollodeploy.billing.feature.catalog.domain.ProductCatalogResponse
 import com.apollodeploy.billing.feature.common.api.BillingApiErrorResponse
-import com.apollodeploy.tesseract.sdk
-import com.apollodeploy.tesseract.sdkDomain
 import io.github.smiley4.ktoropenapi.get
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.route
 
 fun Route.productCatalogRoutes(controller: ProductCatalogController) {
-    sdkDomain("/billing/catalog", "billingCatalog", stability = "public")
-
     route("/billing/catalog") {
         get("/{appSlug}", {
             operationId = "getBillingProductCatalog"
@@ -53,10 +49,6 @@ fun Route.productCatalogRoutes(controller: ProductCatalogController) {
             }
         }) {
             controller.getCatalog(call)
-        }.sdk {
-            operationId = "getBillingProductCatalog"
-            methodName = "getBillingProductCatalog"
-            response<ProductCatalogResponse>()
         }
     }
 }

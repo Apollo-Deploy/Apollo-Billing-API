@@ -194,7 +194,7 @@ Key groups (mapped into nested `AppConfig`):
 - **Reader / Signal DB** — `BILLING_SUPERUSER_PASSWORD`, `SIGNAL_DB_HOST`, `SIGNAL_DB_PORT`, `SIGNAL_DB_NAME`, `SIGNAL_DB_SSLMODE`
 - **Redis** — `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_DB`
 - **Polar** — `POLAR_API_KEY`, `POLAR_WEBHOOK_SECRET`, `POLAR_API_BASE_URL`
-- **OAuth/IAM** — `PLATFORM_URL`, `PLATFORM_CLIENT_ID`, `PLATFORM_CLIENT_SECRET`, `AUTH_JWKS_URL`, `AUTH_OAUTH_ISSUER_URL`, `AUTH_OAUTH_VALID_AUDIENCES`, `OAUTH_SERVICE_CLIENT_IDS`
+- **OAuth/IAM** — `PLATFORM_URL`, `PLATFORM_AUDIENCE_URL`, `PLATFORM_CLIENT_ID`, `PLATFORM_CLIENT_SECRET`, `AUTH_JWKS_URL`, `AUTH_OAUTH_ISSUER_URL`, `AUTH_OAUTH_VALID_AUDIENCES`, `OAUTH_SERVICE_CLIENT_IDS`
 - **SSL** — `DB_PROVIDER` (`postgres` / `planetscale`) influences effective SSL mode
 
 ---
@@ -301,18 +301,11 @@ BILLING_BASE_URL=https://billing.apollodeploy.com
 ```kotlin
 // build.gradle.kts
 repositories {
-    maven {
-        name = "apolloCodeArtifact"
-        url = uri("https://apollo-deploy-753668406194.d.codeartifact.us-east-1.amazonaws.com/maven/apollo-billing-sdk/")
-        credentials {
-            username = "aws"
-            password = providers.environmentVariable("CODEARTIFACT_AUTH_TOKEN").get()
-        }
-    }
+    mavenCentral()
 }
 
 dependencies {
-    implementation("com.apollodeploy:billing-sdk:1.0.7")
+    implementation("com.apollodeploy:billing-sdk:<version>")
 }
 ```
 
@@ -320,10 +313,10 @@ dependencies {
 
 ```bash
 # From this repo:
-make sdk-ts
+make sdk
 cd sdk/typescript && npm pack
 # In your app:
-npm install /path/to/apollo-deploy-billing-sdk-1.0.7.tgz
+npm install /path/to/apollo-deploy-billing-sdk-1.6.0.tgz
 ```
 
 ### Step 5: Use the SDK in your backend
@@ -331,13 +324,16 @@ npm install /path/to/apollo-deploy-billing-sdk-1.0.7.tgz
 Create a billing client with automatic token refresh:
 
 ```kotlin
-val m2mClient = OAuthM2mClient(
-    httpClient = httpClient,
-    platformUrl = System.getenv("PLATFORM_URL"),
-    clientId = System.getenv("PLATFORM_CLIENT_ID"),
-    clientSecret = System.getenv("PLATFORM_CLIENT_SECRET"),
-    audienceUrl = System.getenv("PLATFORM_AUDIENCE_URL"),
-)
+val platformUrl = System.getenv("PLATFORM_URL")
+val m2mClient = MachineOAuthClient {
+    httpClient(httpClient)
+    tokenEndpoint("${platformUrl.trimEnd('/')}/auth/oauth2/token")
+    clientId(System.getenv("PLATFORM_CLIENT_ID"))
+    clientSecret(System.getenv("PLATFORM_CLIENT_SECRET"))
+    audience(System.getenv("PLATFORM_AUDIENCE_URL").ifBlank { platformUrl })
+    clientSecretPost()
+    if (platformUrl.startsWith("http://")) allowInsecureHttp()
+}
 
 val billingProvider = ApolloBillingClientProvider(
     baseUrl = System.getenv("BILLING_BASE_URL"),
@@ -413,12 +409,9 @@ val entitlements = billingProvider.get().billingEntitlements.getBillingEntitleme
 ## SDK Generation & Publishing
 
 ```bash
-make sdk              # generate TypeScript + Java SDKs
-make sdk-ts           # TypeScript only
-make sdk-java         # Java only
-make sdk-publish SDK_VERSION=1.0.8   # publish both
-make sdk-codeartifact # refresh CodeArtifact Maven token
-make sdk-manifest     # export Tesseract manifest only
+make sdk                              # export OpenAPI 3.1, then generate all SDKs locally
+make sdk-publish-kotlin SDK_VERSION=2.2.0  # publish the Kotlin SDK to Maven Central
+make sdk-publish SDK_VERSION=2.3.0         # publish npm + Maven Central when both versions are new
 ```
 
 See [docs/sdk-generation.md](docs/sdk-generation.md) and [docs/sdk-readme.md](docs/sdk-readme.md) for publishing details.

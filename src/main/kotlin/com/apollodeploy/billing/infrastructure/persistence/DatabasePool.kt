@@ -70,7 +70,7 @@ class DatabasePool private constructor(
             if (sslmode.isNotBlank() && sslmode != "disable") "?sslmode=$sslmode" else ""
 
         /**
-         * Stub pool for manifest-only / SDK generation mode (TESSERACT_GENERATE=1).
+         * Stub pool for offline OpenAPI export mode.
          *
          * No real database connection is ever opened. Any call to [withConnection] or
          * [withTransaction] will throw [IllegalStateException] because the pool is

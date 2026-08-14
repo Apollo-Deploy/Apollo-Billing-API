@@ -5,7 +5,7 @@ import com.apollodeploy.billing.feature.checkout.domain.CreateCheckoutRequest
 import com.apollodeploy.billing.feature.checkout.domain.CreateCheckoutResponse
 import com.apollodeploy.billing.feature.checkout.domain.CreateCheckoutResult
 import com.apollodeploy.billing.support.billingTestApplication
-import com.apollodeploy.billing.support.noAuthInternalRoutes
+import com.apollodeploy.billing.support.machineAuthenticatedRoutes
 import com.apollodeploy.billing.support.validServiceToken
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -45,7 +45,7 @@ class CheckoutControllerEdgeCaseTest {
     @Test
     fun `POST checkout with all optional fields returns HTTP 200`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { checkoutRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { checkoutRoutes(controller) } },
         ) {
             coEvery { checkoutService.createCheckout(any()) } returns successResponse
 
@@ -82,7 +82,7 @@ class CheckoutControllerEdgeCaseTest {
     @Test
     fun `POST checkout with only required fields returns HTTP 200 and empty metadata`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { checkoutRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { checkoutRoutes(controller) } },
         ) {
             val capturedRequest = slot<CreateCheckoutRequest>()
             coEvery { checkoutService.createCheckout(capture(capturedRequest)) } returns successResponse
@@ -117,7 +117,7 @@ class CheckoutControllerEdgeCaseTest {
     @Test
     fun `POST checkout with metadata routes campaign key to service`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { checkoutRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { checkoutRoutes(controller) } },
         ) {
             val capturedRequest = slot<CreateCheckoutRequest>()
             coEvery { checkoutService.createCheckout(capture(capturedRequest)) } returns successResponse
@@ -152,7 +152,7 @@ class CheckoutControllerEdgeCaseTest {
     @Test
     fun `POST checkout missing productSlug returns HTTP 400`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { checkoutRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { checkoutRoutes(controller) } },
         ) {
             val body = """{"orgId":"org_1","appSlug":"signal"}"""
 

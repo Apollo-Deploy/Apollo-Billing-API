@@ -3,13 +3,9 @@ name: Publish SDKs
 # Generate and publish the TypeScript and JVM billing SDKs when an SDK release
 # tag is pushed, e.g. `sdk-v1.0.8`. The tag suffix becomes SDK_VERSION.
 #
-# Why a Postgres service is required:
-#   The Tesseract manifest is produced by booting the app (`./gradlew run` inside
-#   scripts/generate-sdk.sh). AppAssembly opens HikariCP pools for the platform
-#   database (billing_app) and the read-only platform reader (billing_superuser)
-#   with fail-fast enabled, so both roles must be reachable for boot to succeed.
-#   The signal database is optional (the app degrades gracefully) and Polar is
-#   not contacted during manifest export, so no POLAR_API_KEY is needed.
+# The SDK generator first exports Billing's OpenAPI 3.1 contract in offline mode.
+# The export assembly uses stub database pools and does not connect to Postgres,
+# Redis, Polar, or the Platform OAuth service.
 on:
   push:
     tags: ["sdk-v[0-9]+.[0-9]+.[0-9]+"]
@@ -20,14 +16,14 @@ on:
         required: true
         type: string
       targets:
-        description: "Targets to publish"
+        description: "Packages to publish"
         required: true
-        default: "typescript,java"
+        default: "kotlin"
         type: choice
         options:
-          - typescript,java
+          - kotlin
+          - typescript,kotlin
           - typescript
-          - java
 
 concurrency:
   group: sdk-publish-${{ github.ref }}
@@ -35,47 +31,27 @@ concurrency:
 
 permissions:
   contents: read
-  id-token: write # OIDC for AWS CodeArtifact (preferred over static keys)
 
 jobs:
   publish:
     name: Generate & publish
     runs-on: ubuntu-latest
 
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: billing_app
-          POSTGRES_PASSWORD: ci_pw
-          POSTGRES_DB: apollo_deploy_platform
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U billing_app -d apollo_deploy_platform"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-
     env:
-      # SDK coordinates / publishing targets.
-      TESSERACT_TARGETS: ${{ github.event.inputs.targets || 'typescript,java' }}
-      # App-boot env consumed by scripts/generate-sdk.sh → ./gradlew run.
+      # SDK coordinates; both TypeScript and JVM SDKs are always generated.
+      # Offline OpenAPI export consumed by scripts/generate-sdk.sh → ./gradlew run.
       APOLLO_BILLING_ENV: development
-      PLATFORM_DB_HOST: 127.0.0.1
-      PLATFORM_DB_PORT: "5432"
-      PLATFORM_DB_NAME: apollo_deploy_platform
-      PLATFORM_DB_USER: billing_app
-      PLATFORM_DB_PASSWORD: ci_pw
-      BILLING_SUPERUSER_PASSWORD: ci_pw
+      TESSERACT_PUBLISH_TARGETS: ${{ inputs.targets || 'typescript,kotlin' }}
       SERVICE_AUTH_SECRET: ci-build-secret
       POLAR_WEBHOOK_SECRET: ci-build-secret
-      # Publishing credentials (configure as repository/environment secrets).
+      # Publishing credentials (configure as repository secrets).
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-      MAVEN_REPOSITORY_URL: ${{ secrets.MAVEN_REPOSITORY_URL }}
-      MAVEN_REPOSITORY_USERNAME: ${{ secrets.MAVEN_REPOSITORY_USERNAME }}
-      MAVEN_REPOSITORY_PASSWORD: ${{ secrets.MAVEN_REPOSITORY_PASSWORD }}
-      MAVEN_REPOSITORY_NAME: codeartifact
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+      ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+      ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_IN_MEMORY_KEY }}
+      ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_IN_MEMORY_KEY_ID }}
+      ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_IN_MEMORY_KEY_PASSWORD }}
 
     steps:
       - uses: actions/checkout@v4
@@ -107,22 +83,8 @@ jobs:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
 
-      # The JVM SDK publishes to a private AWS CodeArtifact Maven repo. When the
-      # repo URL/credentials are provided as static secrets above, this step is a
-      # no-op. To use OIDC instead, set CODEARTIFACT_* repo vars and uncomment:
-      #
-      # - name: Configure AWS credentials (OIDC)
-      #   if: contains(env.TESSERACT_TARGETS, 'java')
-      #   uses: aws-actions/configure-aws-credentials@v4
-      #   with:
-      #     role-to-assume: ${{ secrets.CODEARTIFACT_ROLE_ARN }}
-      #     aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
-      # - name: Resolve CodeArtifact Maven endpoint + token
-      #   if: contains(env.TESSERACT_TARGETS, 'java')
-      #   run: scripts/setup-codeartifact-maven-env.sh
+      - name: Install Tesseract SDK generator
+        run: npm install --global @apollo-deploy/tesseract@3.1.0
 
       - name: Generate & publish SDKs
-        # Call the generator directly rather than `make sdk-publish`, which would
-        # force the `sdk-codeartifact` AWS bootstrap and hardcode both targets.
-        # Static MAVEN_REPOSITORY_* secrets (or the OIDC steps above) cover auth.
         run: TESSERACT_PUBLISH=1 TESSERACT_PACKAGE_VERSION="${{ steps.version.outputs.version }}" scripts/generate-sdk.sh
