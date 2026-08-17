@@ -842,7 +842,7 @@ risk, or contractual exposure:
 
 - paid AI generation,
 - build minutes,
-- SMS/email sends at scale,
+- email sends at scale,
 - data exports,
 - premium compliance features,
 - destructive provisioning actions,

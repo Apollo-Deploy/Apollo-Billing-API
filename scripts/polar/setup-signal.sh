@@ -26,7 +26,6 @@ fi
 # ── Defaults (overridden by flags) ────────────────────────────────────────────
 
 ENV_MODE="sandbox"       # sandbox | production
-SETUP_MODE="both"        # email | sms | both
 DRY_RUN=0
 API_KEY="${POLAR_API_KEY:-}"
 ORGANIZATION_ID="${POLAR_ORGANIZATION_ID:-}"
@@ -48,14 +47,6 @@ while [[ $# -gt 0 ]]; do
             esac
             shift 2
             ;;
-        --setup)
-            SETUP_MODE="${2:?Missing value for --setup (email|sms|both)}"
-            case "$SETUP_MODE" in
-                email|sms|both) ;;
-                *) echo "Invalid --setup value: $SETUP_MODE. Must be email, sms, or both." >&2; exit 1 ;;
-            esac
-            shift 2
-            ;;
         --output)
             OUTPUT_FILE="${2:?Missing value for --output}"
             shift 2
@@ -71,7 +62,6 @@ Usage:
 
 Options:
   --env ENV          Target environment: sandbox (default) or production.
-  --setup MODE       What to set up: email, sms, or both (default: both).
   --dry-run          Print intended work without calling Polar.
   --organization-id  UUID required when using a user token instead of an org token.
   --output PATH      Write product and meter IDs to PATH.
@@ -116,7 +106,6 @@ if [[ "$DRY_RUN" -eq 0 && "$ENV_MODE" == "production" ]]; then
     echo "  ⚠️  You are about to write to the PRODUCTION Polar API."
     echo "     Base URL : $BASE_URL"
     echo "     Namespace: $NAMESPACE"
-    echo "     Setup    : $SETUP_MODE"
     echo ""
     read -r -p "  Type 'yes' to continue: " CONFIRM
     if [[ "$CONFIRM" != "yes" ]]; then
@@ -215,12 +204,6 @@ metadata_json() {
     local setup_key="$1" category="$2"
     jq -n --arg ns "$NAMESPACE" --arg k "$setup_key" --arg cat "$category" \
         '{apollo_namespace:$ns, apollo_setup_key:$k, apollo_app:"signal", apollo_category:$cat}'
-}
-
-sms_metadata_json() {
-    local setup_key="$1" category="$2"
-    jq -n --arg ns "$NAMESPACE" --arg k "$setup_key" --arg cat "$category" \
-        '{apollo_namespace:$ns, apollo_setup_key:$k, apollo_app:"signal", apollo_category:$cat, apollo_addon_type:"sms"}'
 }
 
 maybe_org_json() {
@@ -375,8 +358,7 @@ _upsert_product() {
     LAST_ID="$id"; record_product "$slug" "$id"
 }
 
-ensure_product()     { _upsert_product metadata_json     "$@"; }
-ensure_sms_product() { _upsert_product sms_metadata_json "$@"; }
+ensure_product() { _upsert_product metadata_json "$@"; }
 
 # ── Benefit attachment helpers ────────────────────────────────────────────────
 
@@ -458,43 +440,6 @@ setup_ai_credit_pack() {
     set_product_benefits "$LAST_ID" "$benefit_id"
 }
 
-# ── High-level SMS setup helpers ─────────────────────────────────────────────
-
-# Args: plan slug included_segments price_cents overage_rate visibility description
-setup_sms_plan() {
-    local plan="$1" slug="$2" included_segments="$3" price_cents="$4"
-    local overage_rate="$5" visibility="$6" description="$7"
-    local product_key product_id benefit_key
-    local benefit_ids
-    benefit_ids=()
-
-    product_key="product-${slug}"
-    ensure_sms_product "$product_key" "$slug" "Signal $plan" "$description" \
-        "recurring" "$price_cents" "$SMS_SEGMENT_METER_ID" "$overage_rate" "$visibility"
-    product_id="$LAST_ID"
-
-    if [[ "$included_segments" != "custom" && "$included_segments" != "0" ]]; then
-        benefit_key="benefit-${slug}-segments"
-        ensure_meter_credit_benefit \
-            "$benefit_key" "Signal $plan monthly SMS segments" "$SMS_SEGMENT_METER_ID" \
-            "$included_segments" "false"
-        benefit_ids+=("$LAST_ID")
-    fi
-
-    [[ "${#benefit_ids[@]}" -gt 0 ]] && set_product_benefits "$product_id" "${benefit_ids[@]}" || true
-}
-
-# Args: name slug segments price_cents description
-setup_sms_segment_pack() {
-    local name="$1" slug="$2" segments="$3" price_cents="$4" description="$5"
-    local product_key="product-${slug}" benefit_key="benefit-${slug}-segments"
-
-    ensure_meter_credit_benefit "$benefit_key" "Signal $name segments" "$SMS_SEGMENT_METER_ID" "$segments" "true"
-    local benefit_id="$LAST_ID"
-    ensure_sms_product "$product_key" "$slug" "Signal $name" "$description" "one_time" "$price_cents" "" "" "public"
-    attach_benefit_to_product "$LAST_ID" "$benefit_id"
-}
-
 # ── Output helpers ────────────────────────────────────────────────────────────
 
 write_output() {
@@ -524,28 +469,15 @@ print_catalog_hint() {
     echo ""
     echo "Catalog values to copy into SignalPlanCatalog.kt:"
 
-    if [[ "$SETUP_MODE" == "email" || "$SETUP_MODE" == "both" ]]; then
-        echo ""
-        echo "// Email / core meters"
-        echo "const val SIGNAL_EMAIL_METER_ID = \"$(jq -r '.meters[] | select(.key=="email") | .id' <<<"$output")\""
-        echo "const val SIGNAL_AUTOMATION_RUN_METER_ID = \"$(jq -r '.meters[] | select(.key=="automation") | .id' <<<"$output")\""
-        echo "const val SIGNAL_AI_CREDIT_METER_ID = \"$(jq -r '.meters[] | select(.key=="aiCredit") | .id' <<<"$output")\""
-        echo ""
-        echo "// Email product IDs:"
-        jq -r '.products[] | select(.slug | test("^signal-(spark|ignite|growth|pulse|scale|enterprise|dedicated|email-payg|automation)"))
-            | "const val " + (.slug | ascii_upcase | gsub("-";"_")) + "_PRODUCT_ID = \"" + .id + "\""' <<<"$output"
-    fi
-
-    if [[ "$SETUP_MODE" == "sms" || "$SETUP_MODE" == "both" ]]; then
-        echo ""
-        echo "// SMS meters"
-        echo "const val SIGNAL_SMS_SEGMENT_METER_ID = \"$(jq -r '.meters[] | select(.key=="smsSegment") | .id' <<<"$output")\""
-        echo "const val SIGNAL_MMS_MESSAGE_METER_ID = \"$(jq -r '.meters[] | select(.key=="mmsMessage") | .id' <<<"$output")\""
-        echo ""
-        echo "// SMS product IDs:"
-        jq -r '.products[] | select(.slug | test("^signal-sms|^signal-mms"))
-            | "const val " + (.slug | ascii_upcase | gsub("-";"_")) + "_PRODUCT_ID = \"" + .id + "\""' <<<"$output"
-    fi
+    echo ""
+    echo "// Email / core meters"
+    echo "const val SIGNAL_EMAIL_METER_ID = \"$(jq -r '.meters[] | select(.key=="email") | .id' <<<"$output")\""
+    echo "const val SIGNAL_AUTOMATION_RUN_METER_ID = \"$(jq -r '.meters[] | select(.key=="automation") | .id' <<<"$output")\""
+    echo "const val SIGNAL_AI_CREDIT_METER_ID = \"$(jq -r '.meters[] | select(.key=="aiCredit") | .id' <<<"$output")\""
+    echo ""
+    echo "// Email product IDs:"
+    jq -r '.products[] | select(.slug | test("^signal-(spark|ignite|growth|pulse|scale|enterprise|dedicated|email-payg|automation)"))
+        | "const val " + (.slug | ascii_upcase | gsub("-";"_")) + "_PRODUCT_ID = \"" + .id + "\""' <<<"$output"
 
     echo ""
     echo "All products:"
@@ -556,86 +488,40 @@ print_catalog_hint() {
 # Main execution
 # ══════════════════════════════════════════════════════════════════════════════
 
-log "Setting up Signal Polar catalog | env=$ENV_MODE setup=$SETUP_MODE url=$BASE_URL"
+log "Setting up Signal Polar catalog | env=$ENV_MODE url=$BASE_URL"
 
 # ── Email ─────────────────────────────────────────────────────────────────────
 
-if [[ "$SETUP_MODE" == "email" || "$SETUP_MODE" == "both" ]]; then
-    log "--- Email meters and products ---"
+log "--- Email meters and products ---"
 
-    ensure_meter "$EMAIL_METER_KEY"      "$EMAIL_METER_OUTPUT_KEY"      "$EMAIL_METER_NAME"      "$EMAIL_METER_EVENT"      "$EMAIL_METER_LABEL"      "$EMAIL_METER_MULTIPLIER"
-    EMAIL_METER_ID="$LAST_ID"
+ensure_meter "$EMAIL_METER_KEY"      "$EMAIL_METER_OUTPUT_KEY"      "$EMAIL_METER_NAME"      "$EMAIL_METER_EVENT"      "$EMAIL_METER_LABEL"      "$EMAIL_METER_MULTIPLIER"
+EMAIL_METER_ID="$LAST_ID"
 
-    ensure_meter "$AUTOMATION_METER_KEY" "$AUTOMATION_METER_OUTPUT_KEY" "$AUTOMATION_METER_NAME" "$AUTOMATION_METER_EVENT" "$AUTOMATION_METER_LABEL" "$AUTOMATION_METER_MULTIPLIER"
-    AUTOMATION_METER_ID="$LAST_ID"
+ensure_meter "$AUTOMATION_METER_KEY" "$AUTOMATION_METER_OUTPUT_KEY" "$AUTOMATION_METER_NAME" "$AUTOMATION_METER_EVENT" "$AUTOMATION_METER_LABEL" "$AUTOMATION_METER_MULTIPLIER"
+AUTOMATION_METER_ID="$LAST_ID"
 
-    ensure_meter "$AI_CREDIT_METER_KEY"  "$AI_CREDIT_METER_OUTPUT_KEY"  "$AI_CREDIT_METER_NAME"  "$AI_CREDIT_METER_EVENT"  "$AI_CREDIT_METER_LABEL"  "$AI_CREDIT_METER_MULTIPLIER"
-    AI_CREDIT_METER_ID="$LAST_ID"
+ensure_meter "$AI_CREDIT_METER_KEY"  "$AI_CREDIT_METER_OUTPUT_KEY"  "$AI_CREDIT_METER_NAME"  "$AI_CREDIT_METER_EVENT"  "$AI_CREDIT_METER_LABEL"  "$AI_CREDIT_METER_MULTIPLIER"
+AI_CREDIT_METER_ID="$LAST_ID"
 
-    setup_plan "$PLAN_SPARK_NAME"      "$PLAN_SPARK_SLUG"      "$PLAN_SPARK_EMAILS"      "$PLAN_SPARK_PRICE"      "$PLAN_SPARK_OVERAGE_RATE"      "$PLAN_SPARK_AI_CREDITS"      "$PLAN_SPARK_VISIBILITY"      "$PLAN_SPARK_DESC"
-    setup_plan "$PLAN_IGNITE_NAME"     "$PLAN_IGNITE_SLUG"     "$PLAN_IGNITE_EMAILS"     "$PLAN_IGNITE_PRICE"     "$PLAN_IGNITE_OVERAGE_RATE"     "$PLAN_IGNITE_AI_CREDITS"     "$PLAN_IGNITE_VISIBILITY"     "$PLAN_IGNITE_DESC"
-    setup_plan "$PLAN_GROWTH_NAME"     "$PLAN_GROWTH_SLUG"     "$PLAN_GROWTH_EMAILS"     "$PLAN_GROWTH_PRICE"     "$PLAN_GROWTH_OVERAGE_RATE"     "$PLAN_GROWTH_AI_CREDITS"     "$PLAN_GROWTH_VISIBILITY"     "$PLAN_GROWTH_DESC"
-    setup_plan "$PLAN_PULSE_NAME"      "$PLAN_PULSE_SLUG"      "$PLAN_PULSE_EMAILS"      "$PLAN_PULSE_PRICE"      "$PLAN_PULSE_OVERAGE_RATE"      "$PLAN_PULSE_AI_CREDITS"      "$PLAN_PULSE_VISIBILITY"      "$PLAN_PULSE_DESC"
-    setup_plan "$PLAN_SCALE_NAME"      "$PLAN_SCALE_SLUG"      "$PLAN_SCALE_EMAILS"      "$PLAN_SCALE_PRICE"      "$PLAN_SCALE_OVERAGE_RATE"      "$PLAN_SCALE_AI_CREDITS"      "$PLAN_SCALE_VISIBILITY"      "$PLAN_SCALE_DESC"
-    setup_plan "$PLAN_ENTERPRISE_NAME" "$PLAN_ENTERPRISE_SLUG" "$PLAN_ENTERPRISE_EMAILS" "$PLAN_ENTERPRISE_PRICE" "$PLAN_ENTERPRISE_OVERAGE_RATE" "$PLAN_ENTERPRISE_AI_CREDITS" "$PLAN_ENTERPRISE_VISIBILITY" "$PLAN_ENTERPRISE_DESC"
+setup_plan "$PLAN_SPARK_NAME"      "$PLAN_SPARK_SLUG"      "$PLAN_SPARK_EMAILS"      "$PLAN_SPARK_PRICE"      "$PLAN_SPARK_OVERAGE_RATE"      "$PLAN_SPARK_AI_CREDITS"      "$PLAN_SPARK_VISIBILITY"      "$PLAN_SPARK_DESC"
+setup_plan "$PLAN_IGNITE_NAME"     "$PLAN_IGNITE_SLUG"     "$PLAN_IGNITE_EMAILS"     "$PLAN_IGNITE_PRICE"     "$PLAN_IGNITE_OVERAGE_RATE"     "$PLAN_IGNITE_AI_CREDITS"     "$PLAN_IGNITE_VISIBILITY"     "$PLAN_IGNITE_DESC"
+setup_plan "$PLAN_GROWTH_NAME"     "$PLAN_GROWTH_SLUG"     "$PLAN_GROWTH_EMAILS"     "$PLAN_GROWTH_PRICE"     "$PLAN_GROWTH_OVERAGE_RATE"     "$PLAN_GROWTH_AI_CREDITS"     "$PLAN_GROWTH_VISIBILITY"     "$PLAN_GROWTH_DESC"
+setup_plan "$PLAN_PULSE_NAME"      "$PLAN_PULSE_SLUG"      "$PLAN_PULSE_EMAILS"      "$PLAN_PULSE_PRICE"      "$PLAN_PULSE_OVERAGE_RATE"      "$PLAN_PULSE_AI_CREDITS"      "$PLAN_PULSE_VISIBILITY"      "$PLAN_PULSE_DESC"
+setup_plan "$PLAN_SCALE_NAME"      "$PLAN_SCALE_SLUG"      "$PLAN_SCALE_EMAILS"      "$PLAN_SCALE_PRICE"      "$PLAN_SCALE_OVERAGE_RATE"      "$PLAN_SCALE_AI_CREDITS"      "$PLAN_SCALE_VISIBILITY"      "$PLAN_SCALE_DESC"
+setup_plan "$PLAN_ENTERPRISE_NAME" "$PLAN_ENTERPRISE_SLUG" "$PLAN_ENTERPRISE_EMAILS" "$PLAN_ENTERPRISE_PRICE" "$PLAN_ENTERPRISE_OVERAGE_RATE" "$PLAN_ENTERPRISE_AI_CREDITS" "$PLAN_ENTERPRISE_VISIBILITY" "$PLAN_ENTERPRISE_DESC"
 
-    ensure_product "product-$DEDICATED_IP_SLUG"     "$DEDICATED_IP_SLUG"     "$DEDICATED_IP_NAME"     "$DEDICATED_IP_DESC"     "recurring" "$DEDICATED_IP_PRICE"   ""               ""                       "public"
-    ensure_product "product-$EMAIL_PAYG_SLUG"       "$EMAIL_PAYG_SLUG"       "$EMAIL_PAYG_NAME"       "$EMAIL_PAYG_DESC"       "recurring" "$EMAIL_PAYG_PRICE"      "$EMAIL_METER_ID"      "$EMAIL_PAYG_OVERAGE_RATE"      "public"
-    ensure_product "product-$AUTOMATION_PAYG_SLUG"  "$AUTOMATION_PAYG_SLUG"  "$AUTOMATION_PAYG_NAME"  "$AUTOMATION_PAYG_DESC"  "recurring" "$AUTOMATION_PAYG_PRICE" "$AUTOMATION_METER_ID" "$AUTOMATION_PAYG_OVERAGE_RATE" "public"
+ensure_product "product-$DEDICATED_IP_SLUG"    "$DEDICATED_IP_SLUG"    "$DEDICATED_IP_NAME"    "$DEDICATED_IP_DESC"    "recurring" "$DEDICATED_IP_PRICE"   ""                     ""                              "public"
+ensure_product "product-$EMAIL_PAYG_SLUG"      "$EMAIL_PAYG_SLUG"      "$EMAIL_PAYG_NAME"      "$EMAIL_PAYG_DESC"      "recurring" "$EMAIL_PAYG_PRICE"      "$EMAIL_METER_ID"      "$EMAIL_PAYG_OVERAGE_RATE"      "public"
+ensure_product "product-$AUTOMATION_PAYG_SLUG" "$AUTOMATION_PAYG_SLUG" "$AUTOMATION_PAYG_NAME" "$AUTOMATION_PAYG_DESC" "recurring" "$AUTOMATION_PAYG_PRICE" "$AUTOMATION_METER_ID" "$AUTOMATION_PAYG_OVERAGE_RATE" "public"
 
-    setup_pack "$PACK_AUTO_SMALL_NAME"  "$PACK_AUTO_SMALL_SLUG"  "$PACK_AUTO_SMALL_RUNS"  "$PACK_AUTO_SMALL_PRICE"  "$PACK_AUTO_SMALL_DESC"
-    setup_pack "$PACK_AUTO_MEDIUM_NAME" "$PACK_AUTO_MEDIUM_SLUG" "$PACK_AUTO_MEDIUM_RUNS" "$PACK_AUTO_MEDIUM_PRICE" "$PACK_AUTO_MEDIUM_DESC"
-    setup_pack "$PACK_AUTO_GROWTH_NAME" "$PACK_AUTO_GROWTH_SLUG" "$PACK_AUTO_GROWTH_RUNS" "$PACK_AUTO_GROWTH_PRICE" "$PACK_AUTO_GROWTH_DESC"
-    setup_pack "$PACK_AUTO_SCALE_NAME"  "$PACK_AUTO_SCALE_SLUG"  "$PACK_AUTO_SCALE_RUNS"  "$PACK_AUTO_SCALE_PRICE"  "$PACK_AUTO_SCALE_DESC"
+setup_pack "$PACK_AUTO_SMALL_NAME"  "$PACK_AUTO_SMALL_SLUG"  "$PACK_AUTO_SMALL_RUNS"  "$PACK_AUTO_SMALL_PRICE"  "$PACK_AUTO_SMALL_DESC"
+setup_pack "$PACK_AUTO_MEDIUM_NAME" "$PACK_AUTO_MEDIUM_SLUG" "$PACK_AUTO_MEDIUM_RUNS" "$PACK_AUTO_MEDIUM_PRICE" "$PACK_AUTO_MEDIUM_DESC"
+setup_pack "$PACK_AUTO_GROWTH_NAME" "$PACK_AUTO_GROWTH_SLUG" "$PACK_AUTO_GROWTH_RUNS" "$PACK_AUTO_GROWTH_PRICE" "$PACK_AUTO_GROWTH_DESC"
+setup_pack "$PACK_AUTO_SCALE_NAME"  "$PACK_AUTO_SCALE_SLUG"  "$PACK_AUTO_SCALE_RUNS"  "$PACK_AUTO_SCALE_PRICE"  "$PACK_AUTO_SCALE_DESC"
 
-    setup_ai_credit_pack "$PACK_AI_100_NAME"  "$PACK_AI_100_SLUG"  "$PACK_AI_100_CREDITS"  "$PACK_AI_100_PRICE"  "$PACK_AI_100_DESC"
-    setup_ai_credit_pack "$PACK_AI_500_NAME"  "$PACK_AI_500_SLUG"  "$PACK_AI_500_CREDITS"  "$PACK_AI_500_PRICE"  "$PACK_AI_500_DESC"
-    setup_ai_credit_pack "$PACK_AI_1000_NAME" "$PACK_AI_1000_SLUG" "$PACK_AI_1000_CREDITS" "$PACK_AI_1000_PRICE" "$PACK_AI_1000_DESC"
-fi
-
-# ── SMS ───────────────────────────────────────────────────────────────────────
-
-if [[ "$SETUP_MODE" == "sms" || "$SETUP_MODE" == "both" ]]; then
-    log "--- SMS meters and products ---"
-
-    ensure_meter "$SMS_SEGMENT_METER_KEY" "$SMS_SEGMENT_METER_OUTPUT_KEY" "$SMS_SEGMENT_METER_NAME" "$SMS_SEGMENT_METER_EVENT" "$SMS_SEGMENT_METER_LABEL" "$SMS_SEGMENT_METER_MULTIPLIER"
-    SMS_SEGMENT_METER_ID="$LAST_ID"
-
-    ensure_meter "$MMS_MESSAGE_METER_KEY" "$MMS_MESSAGE_METER_OUTPUT_KEY" "$MMS_MESSAGE_METER_NAME" "$MMS_MESSAGE_METER_EVENT" "$MMS_MESSAGE_METER_LABEL" "$MMS_MESSAGE_METER_MULTIPLIER"
-    MMS_MESSAGE_METER_ID="$LAST_ID"
-
-    # SMS subscription plans
-    setup_sms_plan "$SMS_PLAN_LITE_NAME"       "$SMS_PLAN_LITE_SLUG"       "$SMS_PLAN_LITE_SEGMENTS"       "$SMS_PLAN_LITE_PRICE"       "$SMS_PLAN_LITE_OVERAGE_RATE"       "$SMS_PLAN_LITE_VISIBILITY"       "$SMS_PLAN_LITE_DESC"
-    setup_sms_plan "$SMS_PLAN_STARTER_NAME"    "$SMS_PLAN_STARTER_SLUG"    "$SMS_PLAN_STARTER_SEGMENTS"    "$SMS_PLAN_STARTER_PRICE"    "$SMS_PLAN_STARTER_OVERAGE_RATE"    "$SMS_PLAN_STARTER_VISIBILITY"    "$SMS_PLAN_STARTER_DESC"
-    setup_sms_plan "$SMS_PLAN_GROWTH_NAME"     "$SMS_PLAN_GROWTH_SLUG"     "$SMS_PLAN_GROWTH_SEGMENTS"     "$SMS_PLAN_GROWTH_PRICE"     "$SMS_PLAN_GROWTH_OVERAGE_RATE"     "$SMS_PLAN_GROWTH_VISIBILITY"     "$SMS_PLAN_GROWTH_DESC"
-    setup_sms_plan "$SMS_PLAN_BUSINESS_NAME"   "$SMS_PLAN_BUSINESS_SLUG"   "$SMS_PLAN_BUSINESS_SEGMENTS"   "$SMS_PLAN_BUSINESS_PRICE"   "$SMS_PLAN_BUSINESS_OVERAGE_RATE"   "$SMS_PLAN_BUSINESS_VISIBILITY"   "$SMS_PLAN_BUSINESS_DESC"
-    setup_sms_plan "$SMS_PLAN_SCALE_NAME"      "$SMS_PLAN_SCALE_SLUG"      "$SMS_PLAN_SCALE_SEGMENTS"      "$SMS_PLAN_SCALE_PRICE"      "$SMS_PLAN_SCALE_OVERAGE_RATE"      "$SMS_PLAN_SCALE_VISIBILITY"      "$SMS_PLAN_SCALE_DESC"
-    setup_sms_plan "$SMS_PLAN_ENTERPRISE_NAME" "$SMS_PLAN_ENTERPRISE_SLUG" "$SMS_PLAN_ENTERPRISE_SEGMENTS" "$SMS_PLAN_ENTERPRISE_PRICE" "$SMS_PLAN_ENTERPRISE_OVERAGE_RATE" "$SMS_PLAN_ENTERPRISE_VISIBILITY" "$SMS_PLAN_ENTERPRISE_DESC"
-
-    # MMS add-on
-    ensure_sms_product "product-$MMS_ADDON_SLUG" "$MMS_ADDON_SLUG" "$MMS_ADDON_NAME" "$MMS_ADDON_DESC" \
-        "recurring" "$MMS_ADDON_PRICE" "$MMS_MESSAGE_METER_ID" "$MMS_ADDON_OVERAGE_RATE" "public"
-    MMS_ADDON_PRODUCT_ID="$LAST_ID"
-    ensure_meter_credit_benefit \
-        "benefit-${MMS_ADDON_SLUG}-messages" "Signal MMS monthly messages" \
-        "$MMS_MESSAGE_METER_ID" "$MMS_ADDON_INCLUDED_MESSAGES" "false"
-    set_product_benefits "$MMS_ADDON_PRODUCT_ID" "$LAST_ID"
-
-    # Premium recurring add-ons
-    ensure_sms_product "product-$SMS_NUMBER_POOLING_SLUG"    "$SMS_NUMBER_POOLING_SLUG"    "$SMS_NUMBER_POOLING_NAME"    "$SMS_NUMBER_POOLING_DESC"    "recurring" "$SMS_NUMBER_POOLING_PRICE"    "" "" "public"
-    ensure_sms_product "product-$SMS_SHORT_CODE_RANDOM_SLUG" "$SMS_SHORT_CODE_RANDOM_SLUG" "$SMS_SHORT_CODE_RANDOM_NAME" "$SMS_SHORT_CODE_RANDOM_DESC" "recurring" "$SMS_SHORT_CODE_RANDOM_PRICE" "" "" "public"
-    ensure_sms_product "product-$SMS_SHORT_CODE_VANITY_SLUG" "$SMS_SHORT_CODE_VANITY_SLUG" "$SMS_SHORT_CODE_VANITY_NAME" "$SMS_SHORT_CODE_VANITY_DESC" "recurring" "$SMS_SHORT_CODE_VANITY_PRICE" "" "" "public"
-
-    # One-time setup fees
-    ensure_sms_product "product-$SMS_SHORT_CODE_SETUP_SLUG"     "$SMS_SHORT_CODE_SETUP_SLUG"     "$SMS_SHORT_CODE_SETUP_NAME"     "$SMS_SHORT_CODE_SETUP_DESC"     "one_time" "$SMS_SHORT_CODE_SETUP_PRICE"     "" "" "public"
-    ensure_sms_product "product-$SMS_SHORT_CODE_MMS_SETUP_SLUG" "$SMS_SHORT_CODE_MMS_SETUP_SLUG" "$SMS_SHORT_CODE_MMS_SETUP_NAME" "$SMS_SHORT_CODE_MMS_SETUP_DESC" "one_time" "$SMS_SHORT_CODE_MMS_SETUP_PRICE" "" "" "public"
-
-    # Segment top-up packs
-    setup_sms_segment_pack "$SMS_PACK_1K_NAME"   "$SMS_PACK_1K_SLUG"   "$SMS_PACK_1K_SEGMENTS"   "$SMS_PACK_1K_PRICE"   "$SMS_PACK_1K_DESC"
-    setup_sms_segment_pack "$SMS_PACK_5K_NAME"   "$SMS_PACK_5K_SLUG"   "$SMS_PACK_5K_SEGMENTS"   "$SMS_PACK_5K_PRICE"   "$SMS_PACK_5K_DESC"
-    setup_sms_segment_pack "$SMS_PACK_25K_NAME"  "$SMS_PACK_25K_SLUG"  "$SMS_PACK_25K_SEGMENTS"  "$SMS_PACK_25K_PRICE"  "$SMS_PACK_25K_DESC"
-    setup_sms_segment_pack "$SMS_PACK_100K_NAME" "$SMS_PACK_100K_SLUG" "$SMS_PACK_100K_SEGMENTS" "$SMS_PACK_100K_PRICE" "$SMS_PACK_100K_DESC"
-fi
+setup_ai_credit_pack "$PACK_AI_100_NAME"  "$PACK_AI_100_SLUG"  "$PACK_AI_100_CREDITS"  "$PACK_AI_100_PRICE"  "$PACK_AI_100_DESC"
+setup_ai_credit_pack "$PACK_AI_500_NAME"  "$PACK_AI_500_SLUG"  "$PACK_AI_500_CREDITS"  "$PACK_AI_500_PRICE"  "$PACK_AI_500_DESC"
+setup_ai_credit_pack "$PACK_AI_1000_NAME" "$PACK_AI_1000_SLUG" "$PACK_AI_1000_CREDITS" "$PACK_AI_1000_PRICE" "$PACK_AI_1000_DESC"
 
 write_output
 print_catalog_hint

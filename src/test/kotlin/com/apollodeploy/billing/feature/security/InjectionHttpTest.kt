@@ -121,7 +121,7 @@ class InjectionHttpTest {
                 client.post("/internal/billing/usage/ingest") {
                     header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
                     contentType(ContentType.Application.Json)
-                    setBody("""{"orgId":"org_1","eventKey":"email.sent'; DROP TABLE sms_messages;--","quantity":1}""")
+                    setBody("""{"orgId":"org_1","eventKey":"email.sent'; DROP TABLE billing_subscriptions;--","quantity":1}""")
                 }
             assertTrue(r.status.value != 500, "SQL injection in eventKey should not crash server")
         }

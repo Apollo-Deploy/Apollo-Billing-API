@@ -297,7 +297,7 @@ class BillingBypassHttpTest {
             client.post("/internal/billing/usage/ingest") {
                 header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
                 contentType(ContentType.Application.Json)
-                setBody("""{"orgId":"org_1","eventKey":"sms.sent","quantity":1,"idempotencyKey":"key-1"}""")
+                setBody("""{"orgId":"org_1","eventKey":"email.sent","quantity":1,"idempotencyKey":"key-1"}""")
             }
 
             coVerify(exactly = 2) { usageService.ingest(any()) }

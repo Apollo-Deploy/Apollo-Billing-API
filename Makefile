@@ -175,11 +175,11 @@ openapi:
 
 ## polar-sandbox — Setup Signal products in Polar sandbox
 polar-sandbox:
-	scripts/polar/polar.sh setup --env sandbox --setup both
+	bash scripts/polar/setup-signal.sh --env sandbox
 
 ## polar-production — Setup Signal products in Polar production
 polar-production:
-	scripts/polar/polar.sh setup --env production --setup both
+	bash scripts/polar/setup-signal.sh --env production
 
 # ── Help ──────────────────────────────────────────────────────────────────────
 
