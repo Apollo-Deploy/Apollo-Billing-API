@@ -3,7 +3,6 @@ package com.apollodeploy.billing.feature.enforce.application
 import arrow.core.Either
 import com.apollodeploy.billing.core.BillingError
 import com.apollodeploy.billing.core.httpStatus
-import com.apollodeploy.billing.feature.enforce.domain.BillingCheck
 import com.apollodeploy.billing.feature.enforce.domain.BillingErrorResponse
 import com.apollodeploy.billing.feature.enforce.domain.EnforceRequest
 import com.apollodeploy.billing.feature.enforce.domain.EnforceResult

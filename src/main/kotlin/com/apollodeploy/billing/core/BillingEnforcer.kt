@@ -222,8 +222,9 @@ class BillingEnforcer(
         val now = System.nanoTime()
 
         return synchronized(cache) {
-            val entry = cache[orgId]
-                ?: return@synchronized null
+            val entry =
+                cache[orgId]
+                    ?: return@synchronized null
 
             if (entry.expiresAtNanos > now) {
                 entry.result

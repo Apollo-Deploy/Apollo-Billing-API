@@ -41,7 +41,10 @@ data class ActiveSubscriptionsResponse(
 )
 
 sealed class ActiveSubscriptionsResult {
-    data class Found(val response: ActiveSubscriptionsResponse) : ActiveSubscriptionsResult()
+    data class Found(
+        val response: ActiveSubscriptionsResponse,
+    ) : ActiveSubscriptionsResult()
+
     data object InternalError : ActiveSubscriptionsResult()
 }
 
@@ -54,9 +57,13 @@ data class CancelSubscriptionResponse(
 )
 
 sealed class CancelSubscriptionResult {
-    data class Canceled(val response: CancelSubscriptionResponse) : CancelSubscriptionResult()
+    data class Canceled(
+        val response: CancelSubscriptionResponse,
+    ) : CancelSubscriptionResult()
 
-    data class NotFound(val subscriptionId: String) : CancelSubscriptionResult()
+    data class NotFound(
+        val subscriptionId: String,
+    ) : CancelSubscriptionResult()
 
     data object PolarUnavailable : CancelSubscriptionResult()
 }

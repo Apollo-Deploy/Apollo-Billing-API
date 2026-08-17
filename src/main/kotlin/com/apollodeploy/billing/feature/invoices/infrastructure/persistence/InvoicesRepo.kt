@@ -1,14 +1,13 @@
 package com.apollodeploy.billing.feature.invoices.infrastructure.persistence
 
-import kotlinx.coroutines.delay
 import com.apollodeploy.billing.core.AppRegistry
 import com.apollodeploy.billing.feature.invoices.domain.GenerateInvoiceResult
 import com.apollodeploy.billing.feature.invoices.domain.InvoiceItem
 import com.apollodeploy.billing.feature.invoices.domain.InvoiceMeterUsage
-import com.apollodeploy.billing.infrastructure.polar.model.PolarCallResult
 import com.apollodeploy.billing.infrastructure.polar.PolarClient
+import com.apollodeploy.billing.infrastructure.polar.model.PolarCallResult
+import kotlinx.coroutines.delay
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
@@ -63,8 +62,9 @@ class InvoicesRepo(
         invoiceId: String,
     ): PolarCallResult<InvoiceItem> {
         val result = getOrderForOrg(orgId, invoiceId)
-        val order = result.value
-            ?: return PolarCallResult.failure(result.statusCode, result.errorBody ?: "Order not found")
+        val order =
+            result.value
+                ?: return PolarCallResult.failure(result.statusCode, result.errorBody ?: "Order not found")
         return PolarCallResult.success(mapOrderToInvoice(order), result.statusCode ?: 200)
     }
 
@@ -73,15 +73,19 @@ class InvoicesRepo(
         invoiceId: String,
     ): PolarCallResult<List<InvoiceMeterUsage>> {
         val result = getOrderForOrg(orgId, invoiceId)
-        val order = result.value
-            ?: return PolarCallResult.failure(result.statusCode, result.errorBody ?: "Order not found")
+        val order =
+            result.value
+                ?: return PolarCallResult.failure(result.statusCode, result.errorBody ?: "Order not found")
 
-        val subscription = order["subscription"]?.jsonObject
-            ?: return PolarCallResult.success(emptyList(), result.statusCode ?: 200)
-        val periodStart = subscription["current_period_start"]?.jsonPrimitive?.contentOrNull
-            ?: return PolarCallResult.success(emptyList(), result.statusCode ?: 200)
-        val periodEnd = subscription["current_period_end"]?.jsonPrimitive?.contentOrNull
-            ?: return PolarCallResult.success(emptyList(), result.statusCode ?: 200)
+        val subscription =
+            order["subscription"]?.jsonObject
+                ?: return PolarCallResult.success(emptyList(), result.statusCode ?: 200)
+        val periodStart =
+            subscription["current_period_start"]?.jsonPrimitive?.contentOrNull
+                ?: return PolarCallResult.success(emptyList(), result.statusCode ?: 200)
+        val periodEnd =
+            subscription["current_period_end"]?.jsonPrimitive?.contentOrNull
+                ?: return PolarCallResult.success(emptyList(), result.statusCode ?: 200)
 
         val usage = polarClient.getInvoiceMeterUsage(orgId, periodStart, periodEnd)
         return usage.value
@@ -95,8 +99,7 @@ class InvoicesRepo(
                     creditedUnits = it.creditedUnits,
                     balance = it.balance,
                 )
-            }
-            ?.let { PolarCallResult.success(it, usage.statusCode ?: 200) }
+            }?.let { PolarCallResult.success(it, usage.statusCode ?: 200) }
             ?: PolarCallResult.failure(usage.statusCode, usage.errorBody ?: "Meter usage unavailable")
     }
 
@@ -105,10 +108,15 @@ class InvoicesRepo(
         invoiceId: String,
     ): PolarCallResult<JsonObject> {
         val result = polarClient.getOrder(invoiceId)
-        val order = result.value
-            ?: return PolarCallResult.failure(result.statusCode, result.errorBody ?: "Order not found")
+        val order =
+            result.value
+                ?: return PolarCallResult.failure(result.statusCode, result.errorBody ?: "Order not found")
         val orderOrgId =
-            order["customer"]?.jsonObject?.get("external_id")?.jsonPrimitive?.contentOrNull
+            order["customer"]
+                ?.jsonObject
+                ?.get("external_id")
+                ?.jsonPrimitive
+                ?.contentOrNull
         if (orderOrgId != orgId) {
             return PolarCallResult.failure(404, "Order not found")
         }
@@ -126,7 +134,8 @@ class InvoicesRepo(
         }
 
         val items =
-            result.value["items"]?.jsonArray
+            result.value["items"]
+                ?.jsonArray
                 ?.mapNotNull { it as? JsonObject }
                 ?.map { mapOrderToInvoice(it) }
                 ?: emptyList()
@@ -135,14 +144,28 @@ class InvoicesRepo(
     }
 
     private fun mapOrderToInvoice(order: JsonObject): InvoiceItem {
-        val productId = order["product_id"]?.jsonPrimitive?.contentOrNull
-            ?: order["product"]?.jsonObject?.get("id")?.jsonPrimitive?.contentOrNull
-        val productName = order["product"]?.jsonObject?.get("name")?.jsonPrimitive?.contentOrNull
+        val productId =
+            order["product_id"]?.jsonPrimitive?.contentOrNull
+                ?: order["product"]
+                    ?.jsonObject
+                    ?.get("id")
+                    ?.jsonPrimitive
+                    ?.contentOrNull
+        val productName =
+            order["product"]
+                ?.jsonObject
+                ?.get("name")
+                ?.jsonPrimitive
+                ?.contentOrNull
 
         val appSlug =
-            order["product"]?.jsonObject
-                ?.get("metadata")?.jsonObject
-                ?.get("apollo_app")?.jsonPrimitive?.contentOrNull
+            order["product"]
+                ?.jsonObject
+                ?.get("metadata")
+                ?.jsonObject
+                ?.get("apollo_app")
+                ?.jsonPrimitive
+                ?.contentOrNull
                 ?: productId?.let { pid -> appRegistry.productForPolarProductId(pid)?.appSlug }
         return InvoiceItem(
             id = order["id"]?.jsonPrimitive?.contentOrNull ?: "",

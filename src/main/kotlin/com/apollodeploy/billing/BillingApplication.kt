@@ -14,10 +14,9 @@ import com.apollodeploy.billing.feature.subscriptions.api.subscriptionsRoutes
 import com.apollodeploy.billing.feature.usage.api.usageIngestRoutes
 import com.apollodeploy.billing.feature.webhook.api.polarWebhookRoutes
 import com.apollodeploy.billing.infrastructure.config.AppConfig
+import com.apollodeploy.billing.infrastructure.validation.InvalidRedirectUrlException
 import com.apollodeploy.oauth.m2m.ktor.MachineOAuth
 import com.apollodeploy.oauth.m2m.ktor.machineAuthenticated
-import com.apollodeploy.oauth.m2m.client.MachineOAuthClient
-import com.apollodeploy.billing.infrastructure.validation.InvalidRedirectUrlException
 import io.github.smiley4.ktoropenapi.OpenApi
 import io.github.smiley4.ktoropenapi.config.AuthScheme
 import io.github.smiley4.ktoropenapi.config.AuthType
@@ -31,6 +30,8 @@ import io.ktor.server.application.ServerReady
 import io.ktor.server.application.install
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
+import io.ktor.server.plugins.ContentTransformationException
+import io.ktor.server.plugins.UnsupportedMediaTypeException
 import io.ktor.server.plugins.calllogging.CallLogging
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.ratelimit.RateLimit
@@ -39,13 +40,13 @@ import io.ktor.server.plugins.ratelimit.rateLimit
 import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.plugins.statuspages.exception
 import io.ktor.server.request.path
-import java.nio.file.Path
 import io.ktor.server.response.respond
 import io.ktor.server.routing.routing
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
 import org.slf4j.event.Level
+import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 
 private const val API_TITLE = "Apollo Billing API"
@@ -114,7 +115,10 @@ fun main() {
             val application = this
             monitor.subscribe(ServerReady) {
                 val path = Path.of(openApiOutputPath)
-                path.parent?.let { java.nio.file.Files.createDirectories(it) }
+                path.parent?.let {
+                    java.nio.file.Files
+                        .createDirectories(it)
+                }
                 java.nio.file.Files.writeString(
                     path,
                     generateOpenApiSpec(application),
@@ -196,18 +200,22 @@ private fun Application.installCorePlugins() {
 }
 
 private fun Application.installMachineOAuth(assembly: AppAssembly) {
-    val issuer = AppConfig.iam.allowedIssuers
-        .firstOrNull()
-        ?: error("IAM issuer URL is not configured")
-    val allowedAudiences = AppConfig.iam.validAudiences
-        .takeIf(Set<String>::isNotEmpty)
-        ?: error("IAM valid audiences are not configured")
-    val jwksUrl = AppConfig.iam.jwksUrl
-        .takeIf(String::isNotBlank)
-        ?: error("IAM JWKS URL is not configured")
-    val serviceClientIds = AppConfig.iam.serviceClientIds
-        .takeIf(Set<String>::isNotEmpty)
-        ?: error("IAM service client IDs are not configured")
+    val issuer =
+        AppConfig.iam.allowedIssuers
+            .firstOrNull()
+            ?: error("IAM issuer URL is not configured")
+    val allowedAudiences =
+        AppConfig.iam.validAudiences
+            .takeIf(Set<String>::isNotEmpty)
+            ?: error("IAM valid audiences are not configured")
+    val jwksUrl =
+        AppConfig.iam.jwksUrl
+            .takeIf(String::isNotBlank)
+            ?: error("IAM JWKS URL is not configured")
+    val serviceClientIds =
+        AppConfig.iam.serviceClientIds
+            .takeIf(Set<String>::isNotEmpty)
+            ?: error("IAM service client IDs are not configured")
     install(MachineOAuth) {
         issuer(issuer)
         audience(allowedAudiences.first())
@@ -220,7 +228,9 @@ private fun Application.installMachineOAuth(assembly: AppAssembly) {
         }
         if (issuer.startsWith("http://", ignoreCase = true) ||
             jwksUrl.startsWith("http://", ignoreCase = true)
-        ) allowInsecureHttp()
+        ) {
+            allowInsecureHttp()
+        }
     }
 }
 
@@ -312,6 +322,28 @@ private fun openApiTags(path: List<String>): List<String> =
 
 private fun Application.installErrorHandling() {
     install(StatusPages) {
+        exception<UnsupportedMediaTypeException> { call, _ ->
+            call.respond(
+                status = HttpStatusCode.UnsupportedMediaType,
+                message =
+                    ErrorResponse(
+                        code = "billing.unsupported_media_type",
+                        message = "Request content type is not supported",
+                    ),
+            )
+        }
+
+        exception<ContentTransformationException> { call, _ ->
+            call.respond(
+                status = HttpStatusCode.BadRequest,
+                message =
+                    ErrorResponse(
+                        code = "billing.invalid_request",
+                        message = "Invalid or unsupported request body",
+                    ),
+            )
+        }
+
         exception<InvalidRedirectUrlException> { call, cause ->
             call.respond(
                 status = HttpStatusCode.BadRequest,

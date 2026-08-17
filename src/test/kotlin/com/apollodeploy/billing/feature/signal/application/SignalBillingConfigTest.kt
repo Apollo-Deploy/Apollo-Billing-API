@@ -85,7 +85,7 @@ class SignalBillingConfigTest {
     // ─── 8.5 ─────────────────────────────────────────────────────────────────
 
     @Test
-    fun `features map contains exactly 11 keys`() {
+    fun `features map contains exactly 12 keys`() {
         val config = baseEntitlements.toPlanFeatureConfig()
 
         val expectedKeys =
@@ -101,6 +101,7 @@ class SignalBillingConfigTest {
                 "sendTimeOptimisation",
                 "dedicatedIps",
                 "multiRegion",
+                "inboundReceiving",
             )
         assertEquals(expectedKeys, config.features.keys)
     }
@@ -123,13 +124,13 @@ class SignalBillingConfigTest {
     }
 
     // ─── 8.7 — Property 8 ────────────────────────────────────────────────────
-    // Feature: billing-comprehensive-unit-tests, Property 8: toPlanFeatureConfig features map always has exactly 11 keys
+    // Feature: billing-comprehensive-unit-tests, Property 8: toPlanFeatureConfig features map always has exactly 12 keys
     //
-    // **Property 8: `toPlanFeatureConfig` features map always has exactly 11 keys**
+    // **Property 8: `toPlanFeatureConfig` features map always has exactly 12 keys**
     // **Validates: Requirements 22.1, 8.5**
 
     @Test
-    fun `property - features map always has exactly 11 keys for all 6 plans (Property 8)`() =
+    fun `property - features map always has exactly 12 keys for all 6 plans (Property 8)`() =
         runBlocking {
             val expectedKeys =
                 setOf(
@@ -144,6 +145,7 @@ class SignalBillingConfigTest {
                     "sendTimeOptimisation",
                     "dedicatedIps",
                     "multiRegion",
+                    "inboundReceiving",
                 )
 
             forAll(Arb.element(signalPlans)) { plan ->

@@ -9,11 +9,9 @@ private const val DEFAULT_LEVEL = "none"
 private const val UNLIMITED_LABEL = "unlimited"
 private const val INVALID_LEVEL = -1
 
-fun PlanFeatureConfig.hasFeature(name: String): Boolean =
-    features[name] == true
+fun PlanFeatureConfig.hasFeature(name: String): Boolean = features[name] == true
 
-fun PlanFeatureConfig.getLimit(name: String): Int =
-    limits[name] ?: 0
+fun PlanFeatureConfig.getLimit(name: String): Int = limits[name] ?: 0
 
 fun PlanFeatureConfig.isFeatureEnabled(requirement: String): Boolean {
     val separator = requirement.indexOf(':')
@@ -75,11 +73,9 @@ fun PlanFeatureConfig.computeRemaining(
     return remaining
 }
 
-fun Int.isUnlimited(): Boolean =
-    this == UNLIMITED_SENTINEL
+fun Int.isUnlimited(): Boolean = this == UNLIMITED_SENTINEL
 
-fun Int.isWithinLimit(usage: Int): Boolean =
-    isUnlimited() || usage < this
+fun Int.isWithinLimit(usage: Int): Boolean = isUnlimited() || usage < this
 
 fun Int.remainingQuota(usage: Int): Int =
     when {

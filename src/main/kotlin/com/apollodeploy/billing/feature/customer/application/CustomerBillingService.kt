@@ -207,14 +207,15 @@ class CustomerBillingService(
         if (req.name.isBlank()) return CustomerBillingResult.InvalidRequest("name is required")
         if (req.ownerEmail.isBlank()) return CustomerBillingResult.InvalidRequest("ownerEmail is required")
 
-        val result = repository.provisionCustomer(
-            orgId = req.orgId,
-            name = req.name,
-            ownerEmail = req.ownerEmail,
-            ownerMemberId = req.ownerMemberId,
-            ownerName = req.ownerName,
-            billingEmail = req.billingEmail,
-        )
+        val result =
+            repository.provisionCustomer(
+                orgId = req.orgId,
+                name = req.name,
+                ownerEmail = req.ownerEmail,
+                ownerMemberId = req.ownerMemberId,
+                ownerName = req.ownerName,
+                billingEmail = req.billingEmail,
+            )
 
         return if (result.value != null) {
             auditLogClient.log(

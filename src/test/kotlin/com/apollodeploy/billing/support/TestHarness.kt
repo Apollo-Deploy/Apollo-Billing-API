@@ -8,6 +8,8 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.install
 import io.ktor.server.plugins.BadRequestException
+import io.ktor.server.plugins.ContentTransformationException
+import io.ktor.server.plugins.UnsupportedMediaTypeException
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.response.respond
@@ -59,6 +61,20 @@ fun billingTestApplication(
                 )
             }
             install(StatusPages) {
+                exception<UnsupportedMediaTypeException> { call, _ ->
+                    call.respond(
+                        HttpStatusCode.UnsupportedMediaType,
+                        mapOf("code" to "billing.unsupported_media_type", "message" to "Request content type is not supported"),
+                    )
+                }
+
+                exception<ContentTransformationException> { call, _ ->
+                    call.respond(
+                        HttpStatusCode.BadRequest,
+                        mapOf("code" to "billing.invalid_request", "message" to "Invalid or unsupported request body"),
+                    )
+                }
+
                 exception<BadRequestException> { call, _ ->
                     call.respond(HttpStatusCode.BadRequest, mapOf("code" to "billing.invalid_request", "message" to "Invalid or missing request body fields"))
                 }

@@ -53,8 +53,7 @@ private class OpenApiSpecCache {
         }
     }
 
-    private fun generate(application: Application): ByteArray =
-        generateOpenApiSpec(application).encodeToByteArray()
+    private fun generate(application: Application): ByteArray = generateOpenApiSpec(application).encodeToByteArray()
 }
 
 internal fun generateOpenApiSpec(application: Application): String {

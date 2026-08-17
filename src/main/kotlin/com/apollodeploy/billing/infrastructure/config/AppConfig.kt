@@ -18,7 +18,8 @@ object AppConfig {
     val redis: RedisConfig = root.getConfig("redis").toRedisConfig()
 
     private val databaseProvider =
-        System.getenv("DB_PROVIDER")
+        System
+            .getenv("DB_PROVIDER")
             ?.takeIf(String::isNotBlank)
             ?: root.getString("db-provider")
 
@@ -105,17 +106,20 @@ private fun Config.toIamConfig(platformUrl: String): IamConfig {
     val normalizedPlatformUrl = platformUrl.trimEnd('/')
 
     return IamConfig(
-        jwksUrl = getString("auth-jwks-url")
-            .ifBlank {
-                normalizedPlatformUrl
-                    .takeIf(String::isNotBlank)
-                    ?.let { "$it/auth/jwks" }
-                    .orEmpty()
-            },
-        allowedIssuers = getStringSet("issuer-url")
-            .ifEmpty { normalizedPlatformUrl.toFallbackSet() },
-        validAudiences = getStringSet("valid-audiences")
-            .ifEmpty { normalizedPlatformUrl.toFallbackSet() },
+        jwksUrl =
+            getString("auth-jwks-url")
+                .ifBlank {
+                    normalizedPlatformUrl
+                        .takeIf(String::isNotBlank)
+                        ?.let { "$it/auth/jwks" }
+                        .orEmpty()
+                },
+        allowedIssuers =
+            getStringSet("issuer-url")
+                .ifEmpty { normalizedPlatformUrl.toFallbackSet() },
+        validAudiences =
+            getStringSet("valid-audiences")
+                .ifEmpty { normalizedPlatformUrl.toFallbackSet() },
         serviceClientIds = getStringSet("service-client-ids"),
         requestTimeoutMs = getLong("request-timeout-ms"),
     )
@@ -128,10 +132,11 @@ private fun Config.toDatabaseConfig(provider: String): DatabaseConfig =
         name = getString("name"),
         user = getString("user"),
         password = getString("password"),
-        sslMode = resolveSslMode(
-            configuredMode = getString("sslmode"),
-            provider = provider,
-        ),
+        sslMode =
+            resolveSslMode(
+                configuredMode = getString("sslmode"),
+                provider = provider,
+            ),
         pool = toDatabasePoolConfig(),
     )
 
@@ -163,8 +168,7 @@ private fun Config.getStringSet(path: String): Set<String> =
         .filter(String::isNotEmpty)
         .toSet()
 
-private fun String.toFallbackSet(): Set<String> =
-    takeIf(String::isNotBlank)?.let(::setOf).orEmpty()
+private fun String.toFallbackSet(): Set<String> = takeIf(String::isNotBlank)?.let(::setOf).orEmpty()
 
 private fun resolveSslMode(
     configuredMode: String,

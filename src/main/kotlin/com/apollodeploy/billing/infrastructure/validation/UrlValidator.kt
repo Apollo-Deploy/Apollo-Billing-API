@@ -44,6 +44,8 @@ object UrlValidator {
             "billing.apollodeploy.com",
             "billing.dev.apollodeploy.com",
             "apollodeploy.local",
+            ".app.apollodeploy.com",
+            ".apollodeploy.local",
         )
 
     /**

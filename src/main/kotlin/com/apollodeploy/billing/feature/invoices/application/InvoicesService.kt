@@ -1,8 +1,8 @@
 package com.apollodeploy.billing.feature.invoices.application
 
 import com.apollodeploy.billing.feature.invoices.domain.GenerateInvoiceResult
-import com.apollodeploy.billing.feature.invoices.domain.GetInvoiceResult
 import com.apollodeploy.billing.feature.invoices.domain.GetInvoiceMeterUsageResult
+import com.apollodeploy.billing.feature.invoices.domain.GetInvoiceResult
 import com.apollodeploy.billing.feature.invoices.domain.InvoiceDetailResponse
 import com.apollodeploy.billing.feature.invoices.domain.InvoiceMeterUsageResponse
 import com.apollodeploy.billing.feature.invoices.domain.ListInvoicesResult

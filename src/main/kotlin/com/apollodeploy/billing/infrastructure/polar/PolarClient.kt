@@ -1,19 +1,5 @@
 package com.apollodeploy.billing.infrastructure.polar
 
-import io.ktor.client.HttpClient
-import io.ktor.client.call.body
-import io.ktor.client.request.bearerAuth
-import io.ktor.client.request.delete
-import io.ktor.client.request.get
-import io.ktor.client.request.parameter
-import io.ktor.client.request.patch
-import io.ktor.client.request.post
-import io.ktor.client.request.setBody
-import io.ktor.client.statement.bodyAsText
-import io.ktor.http.ContentType
-import io.ktor.http.contentType
-import io.ktor.http.isSuccess
-import kotlinx.coroutines.withTimeout
 import com.apollodeploy.billing.infrastructure.polar.model.PolarBillingAddressInput
 import com.apollodeploy.billing.infrastructure.polar.model.PolarCallResult
 import com.apollodeploy.billing.infrastructure.polar.model.PolarCheckoutSession
@@ -31,6 +17,20 @@ import com.apollodeploy.billing.infrastructure.polar.model.PolarMemberListRespon
 import com.apollodeploy.billing.infrastructure.polar.model.PolarMemberOwnerCreate
 import com.apollodeploy.billing.infrastructure.polar.model.PolarSubscriptionCancelRequest
 import com.apollodeploy.billing.infrastructure.polar.model.PolarUsageEvent
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
+import io.ktor.client.request.bearerAuth
+import io.ktor.client.request.delete
+import io.ktor.client.request.get
+import io.ktor.client.request.parameter
+import io.ktor.client.request.patch
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
+import io.ktor.http.isSuccess
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -438,18 +438,20 @@ class PolarClient(
             return PolarCallResult.failure(null, "POLAR_API_KEY is not configured")
         }
 
-        val body = PolarCreateTeamCustomerRequest(
-            type = "team",
-            externalId = orgId,
-            name = name,
-            // Billing contact on the team customer; fall back to the owner email.
-            email = billingEmail ?: ownerEmail,
-            owner = PolarMemberOwnerCreate(
-                email = ownerEmail,
-                name = ownerName,
-                externalId = ownerMemberId,
-            ),
-        )
+        val body =
+            PolarCreateTeamCustomerRequest(
+                type = "team",
+                externalId = orgId,
+                name = name,
+                // Billing contact on the team customer; fall back to the owner email.
+                email = billingEmail ?: ownerEmail,
+                owner =
+                    PolarMemberOwnerCreate(
+                        email = ownerEmail,
+                        name = ownerName,
+                        externalId = ownerMemberId,
+                    ),
+            )
 
         return try {
             withTimeout(timeoutMs) {
@@ -655,12 +657,14 @@ class PolarClient(
                     return@withTimeout response.toPolarFailure("get order invoice", orderId)
                 }
                 val url =
-                    response.body<PolarInvoiceUrlResponse>().url
+                    response
+                        .body<PolarInvoiceUrlResponse>()
+                        .url
                         .takeIf { it.isNotBlank() }
-                    ?: return@withTimeout PolarCallResult.failure(
-                        response.status.value,
-                        "Invoice URL missing from Polar response",
-                    )
+                        ?: return@withTimeout PolarCallResult.failure(
+                            response.status.value,
+                            "Invoice URL missing from Polar response",
+                        )
                 PolarCallResult.success(url, response.status.value)
             }
         } catch (e: Exception) {
@@ -794,46 +798,55 @@ class PolarClient(
                 }
 
                 val meters = (metersResponse.body<JsonObject>()["items"] as? JsonArray).orEmpty()
-                val usage = buildList {
-                    for (item in meters) {
-                        val customerMeter = item as? JsonObject ?: continue
-                        val meter = customerMeter["meter"]?.jsonObject ?: continue
-                        val meterId = customerMeter["meter_id"]?.jsonPrimitive?.contentOrNull.orEmpty()
-                        val eventsResponse =
-                            httpClient.get("$baseUrl/v1/events") {
-                                bearerAuth(apiKey)
-                                parameter("external_customer_id", orgId)
-                                parameter("meter_id", meterId)
-                                parameter("start_timestamp", periodStart)
-                                parameter("end_timestamp", periodEnd)
-                                parameter("source", "user")
-                                parameter("limit", 100)
-                            }
-                        if (!eventsResponse.status.isSuccess()) {
-                            return@withTimeout eventsResponse.toPolarFailure("list meter usage events", meterId)
-                        }
-
-                        val usedUnits =
-                            ((eventsResponse.body<JsonObject>()["items"] as? JsonArray).orEmpty())
-                                .mapNotNull { it as? JsonObject }
-                                .sumOf { event ->
-                                    event["metadata"]?.jsonObject?.get("units")?.jsonPrimitive?.longOrNull
-                                        ?: event["metadata"]?.jsonObject?.get("quantity")?.jsonPrimitive?.longOrNull
-                                        ?: 1L
+                val usage =
+                    buildList {
+                        for (item in meters) {
+                            val customerMeter = item as? JsonObject ?: continue
+                            val meter = customerMeter["meter"]?.jsonObject ?: continue
+                            val meterId = customerMeter["meter_id"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                            val eventsResponse =
+                                httpClient.get("$baseUrl/v1/events") {
+                                    bearerAuth(apiKey)
+                                    parameter("external_customer_id", orgId)
+                                    parameter("meter_id", meterId)
+                                    parameter("start_timestamp", periodStart)
+                                    parameter("end_timestamp", periodEnd)
+                                    parameter("source", "user")
+                                    parameter("limit", 100)
                                 }
-                        add(
-                            PolarInvoiceMeterUsage(
-                                meterId = meterId,
-                                meterName = meter["name"]?.jsonPrimitive?.contentOrNull ?: meterId,
-                                unit = meter["unit"]?.jsonPrimitive?.contentOrNull,
-                                usedUnits = usedUnits,
-                                consumedUnits = customerMeter["consumed_units"]?.jsonPrimitive?.longOrNull ?: 0,
-                                creditedUnits = customerMeter["credited_units"]?.jsonPrimitive?.longOrNull ?: 0,
-                                balance = customerMeter["balance"]?.jsonPrimitive?.longOrNull ?: 0,
-                            ),
-                        )
+                            if (!eventsResponse.status.isSuccess()) {
+                                return@withTimeout eventsResponse.toPolarFailure("list meter usage events", meterId)
+                            }
+
+                            val usedUnits =
+                                ((eventsResponse.body<JsonObject>()["items"] as? JsonArray).orEmpty())
+                                    .mapNotNull { it as? JsonObject }
+                                    .sumOf { event ->
+                                        event["metadata"]
+                                            ?.jsonObject
+                                            ?.get("units")
+                                            ?.jsonPrimitive
+                                            ?.longOrNull
+                                            ?: event["metadata"]
+                                                ?.jsonObject
+                                                ?.get("quantity")
+                                                ?.jsonPrimitive
+                                                ?.longOrNull
+                                            ?: 1L
+                                    }
+                            add(
+                                PolarInvoiceMeterUsage(
+                                    meterId = meterId,
+                                    meterName = meter["name"]?.jsonPrimitive?.contentOrNull ?: meterId,
+                                    unit = meter["unit"]?.jsonPrimitive?.contentOrNull,
+                                    usedUnits = usedUnits,
+                                    consumedUnits = customerMeter["consumed_units"]?.jsonPrimitive?.longOrNull ?: 0,
+                                    creditedUnits = customerMeter["credited_units"]?.jsonPrimitive?.longOrNull ?: 0,
+                                    balance = customerMeter["balance"]?.jsonPrimitive?.longOrNull ?: 0,
+                                ),
+                            )
+                        }
                     }
-                }
 
                 PolarCallResult.success(usage, metersResponse.status.value)
             }

@@ -52,31 +52,50 @@ data class GenerateInvoiceResponse(
 )
 
 sealed class GetInvoiceResult {
-    data class Found(val response: InvoiceDetailResponse) : GetInvoiceResult()
-    data class NotFound(val invoiceId: String) : GetInvoiceResult()
+    data class Found(
+        val response: InvoiceDetailResponse,
+    ) : GetInvoiceResult()
+
+    data class NotFound(
+        val invoiceId: String,
+    ) : GetInvoiceResult()
+
     data object PolarUnavailable : GetInvoiceResult()
 }
 
 sealed class GetInvoiceMeterUsageResult {
-    data class Found(val response: InvoiceMeterUsageResponse) : GetInvoiceMeterUsageResult()
-    data class NotFound(val invoiceId: String) : GetInvoiceMeterUsageResult()
+    data class Found(
+        val response: InvoiceMeterUsageResponse,
+    ) : GetInvoiceMeterUsageResult()
+
+    data class NotFound(
+        val invoiceId: String,
+    ) : GetInvoiceMeterUsageResult()
+
     data object PolarUnavailable : GetInvoiceMeterUsageResult()
 }
 
 sealed class ListInvoicesResult {
-    data class Found(val response: PaginatedInvoicesResponse) : ListInvoicesResult()
+    data class Found(
+        val response: PaginatedInvoicesResponse,
+    ) : ListInvoicesResult()
+
     data object PolarUnavailable : ListInvoicesResult()
 }
 
 sealed class GenerateInvoiceResult {
     /** Invoice is ready — includes a pre-signed PDF download URL from Polar. */
-    data class Generated(val downloadUrl: String) : GenerateInvoiceResult()
+    data class Generated(
+        val downloadUrl: String,
+    ) : GenerateInvoiceResult()
 
     /** Generation was triggered but the PDF URL is not ready yet. */
     data object Pending : GenerateInvoiceResult()
 
     /** No order with the given ID exists (Polar returned 404). */
-    data class NotFound(val invoiceId: String) : GenerateInvoiceResult()
+    data class NotFound(
+        val invoiceId: String,
+    ) : GenerateInvoiceResult()
 
     /** Polar returned an error other than 404. */
     data object PolarUnavailable : GenerateInvoiceResult()

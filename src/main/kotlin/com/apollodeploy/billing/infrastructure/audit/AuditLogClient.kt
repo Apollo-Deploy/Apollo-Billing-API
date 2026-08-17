@@ -1,5 +1,6 @@
 package com.apollodeploy.billing.infrastructure.audit
 
+import com.apollodeploy.oauth.m2m.client.MachineOAuthClient
 import io.ktor.client.HttpClient
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.post
@@ -8,7 +9,6 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
-import com.apollodeploy.oauth.m2m.client.MachineOAuthClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch

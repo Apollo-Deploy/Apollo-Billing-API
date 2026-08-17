@@ -6,7 +6,6 @@ import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 /**
  * Adversarial tests for security infrastructure — directly tests the guard logic.
@@ -277,5 +276,4 @@ class AuthBypassHttpTest {
     fun `url validator - valid HTTPS subdomain of allowed domain passes`() {
         assertNull(UrlValidator.validateRedirectUrl("https://my.app.apollodeploy.com/return"))
     }
-
 }

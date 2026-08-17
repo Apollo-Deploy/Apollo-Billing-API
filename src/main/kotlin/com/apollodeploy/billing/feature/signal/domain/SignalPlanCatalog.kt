@@ -233,6 +233,7 @@ fun isDedicatedIpEligibleForPlan(planSlug: String): Boolean = planSlug !in DEDIC
 const val SIGNAL_EMAIL_METER_ID = "7925de58-f234-46b2-bc05-97dabd8894a7"
 const val SIGNAL_AUTOMATION_RUN_METER_ID = "b28806bb-56e0-4c95-8f78-433140388632"
 const val SIGNAL_AI_CREDIT_METER_ID = "73419326-4df0-454f-b734-0c9eef1c492f"
+
 /** Polar usage event name for accepted inbound email. */
 const val SIGNAL_EMAIL_RECEIVED_EVENT_KEY = "signal.email.received"
 

@@ -19,8 +19,7 @@ class DatabasePool private constructor(
     fun isClosed(): Boolean = closed
 
     companion object {
-        fun create(): DatabasePool =
-            create(AppConfig.platformDatabase)
+        fun create(): DatabasePool = create(AppConfig.platformDatabase)
 
         /**
          * Read-only pool — billing_superuser on the platform database.
@@ -66,8 +65,7 @@ class DatabasePool private constructor(
             }
 
         /** Builds the JDBC query string for SSL if sslmode is not "disable". */
-        private fun sslQuery(sslmode: String): String =
-            if (sslmode.isNotBlank() && sslmode != "disable") "?sslmode=$sslmode" else ""
+        private fun sslQuery(sslmode: String): String = if (sslmode.isNotBlank() && sslmode != "disable") "?sslmode=$sslmode" else ""
 
         /**
          * Stub pool for offline OpenAPI export mode.

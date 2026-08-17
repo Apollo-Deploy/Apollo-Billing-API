@@ -34,7 +34,6 @@ import com.apollodeploy.billing.feature.webhook.application.PolarWebhookService
 import com.apollodeploy.billing.feature.webhook.infrastructure.persistence.PolarWebhookRepo
 import com.apollodeploy.billing.infrastructure.audit.AuditLogClient
 import com.apollodeploy.billing.infrastructure.config.AppConfig
-import com.apollodeploy.oauth.m2m.client.MachineOAuthClient
 import com.apollodeploy.billing.infrastructure.persistence.DatabasePool
 import com.apollodeploy.billing.infrastructure.persistence.SubscriptionRepo
 import com.apollodeploy.billing.infrastructure.polar.PolarClient
@@ -42,6 +41,7 @@ import com.apollodeploy.billing.infrastructure.polar.PolarWebhookHandler
 import com.apollodeploy.billing.infrastructure.redis.PolarStateCache
 import com.apollodeploy.billing.infrastructure.redis.RedisPool
 import com.apollodeploy.billing.infrastructure.webhook.WebhookDeduplicator
+import com.apollodeploy.oauth.m2m.client.MachineOAuthClient
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
@@ -85,18 +85,15 @@ class AppAssembly private constructor(
     private val signalDb: DatabasePool?,
     private val redis: RedisPool?,
 ) : AutoCloseable {
-
     companion object {
         private val logger = LoggerFactory.getLogger(AppAssembly::class.java)
 
-        fun create(): AppAssembly =
-            create(openApiExportOnly = false)
+        fun create(): AppAssembly = create(openApiExportOnly = false)
 
         /**
          * Creates an assembly without opening external database or Redis connections.
          */
-        fun createForOpenApiExport(): AppAssembly =
-            create(openApiExportOnly = true)
+        fun createForOpenApiExport(): AppAssembly = create(openApiExportOnly = true)
 
         private fun create(openApiExportOnly: Boolean): AppAssembly {
             logger.info(
@@ -227,27 +224,30 @@ class AppAssembly private constructor(
 
         private fun buildOAuthM2mClient(
             httpClient: HttpClient,
-        ): MachineOAuthClient = MachineOAuthClient {
-            val platformUrl = AppConfig.platform.url
-                .takeIf(String::isNotBlank)
-                ?: error("PLATFORM_URL is required")
-            val audience = AppConfig.platform.audienceUrl
-                .takeIf(String::isNotBlank)
-                ?: error("PLATFORM_AUDIENCE_URL is required")
-            require(AppConfig.platform.clientId.isNotBlank()) {
-                "PLATFORM_CLIENT_ID is required"
+        ): MachineOAuthClient =
+            MachineOAuthClient {
+                val platformUrl =
+                    AppConfig.platform.url
+                        .takeIf(String::isNotBlank)
+                        ?: error("PLATFORM_URL is required")
+                val audience =
+                    AppConfig.platform.audienceUrl
+                        .takeIf(String::isNotBlank)
+                        ?: error("PLATFORM_AUDIENCE_URL is required")
+                require(AppConfig.platform.clientId.isNotBlank()) {
+                    "PLATFORM_CLIENT_ID is required"
+                }
+                require(AppConfig.platform.clientSecret.isNotBlank()) {
+                    "PLATFORM_CLIENT_SECRET is required"
+                }
+                tokenEndpoint("${platformUrl.trimEnd('/')}/auth/oauth2/token")
+                clientId(AppConfig.platform.clientId)
+                clientSecret(AppConfig.platform.clientSecret)
+                audience(audience)
+                httpClient(httpClient)
+                clientSecretPost()
+                if (platformUrl.startsWith("http://", ignoreCase = true)) allowInsecureHttp()
             }
-            require(AppConfig.platform.clientSecret.isNotBlank()) {
-                "PLATFORM_CLIENT_SECRET is required"
-            }
-            tokenEndpoint("${platformUrl.trimEnd('/')}/auth/oauth2/token")
-            clientId(AppConfig.platform.clientId)
-            clientSecret(AppConfig.platform.clientSecret)
-            audience(audience)
-            httpClient(httpClient)
-            clientSecretPost()
-            if (platformUrl.startsWith("http://", ignoreCase = true)) allowInsecureHttp()
-        }
 
         private fun buildAuditLogClient(
             httpClient: HttpClient,
@@ -291,8 +291,7 @@ class AppAssembly private constructor(
                         ?.enforceFeature(
                             organizationId,
                             INBOUND_RECEIVING_FEATURE,
-                        )
-                        ?.fold(
+                        )?.fold(
                             { false },
                             { true },
                         )

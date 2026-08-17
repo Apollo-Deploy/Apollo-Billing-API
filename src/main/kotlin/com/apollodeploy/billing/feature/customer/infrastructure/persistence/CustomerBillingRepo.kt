@@ -45,8 +45,7 @@ class CustomerBillingRepo(
         orgId: String,
         returnUrl: String? = null,
         externalMemberId: String? = null,
-    ): PolarCallResult<PolarCustomerSession> =
-        polarClient.createCustomerSession(orgId, returnUrl, externalMemberId)
+    ): PolarCallResult<PolarCustomerSession> = polarClient.createCustomerSession(orgId, returnUrl, externalMemberId)
 
     suspend fun provisionCustomer(
         orgId: String,

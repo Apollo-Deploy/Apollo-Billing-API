@@ -21,10 +21,11 @@ class SubscriptionsService(
 ) {
     private val logger = LoggerFactory.getLogger(SubscriptionsService::class.java)
 
-    fun getActiveSubscriptions(orgId: String): ActiveSubscriptionsResult {
-        return try {
+    fun getActiveSubscriptions(orgId: String): ActiveSubscriptionsResult =
+        try {
             val grouped =
-                queryRepository.findActiveSubscriptionsGroupedByApp(orgId)
+                queryRepository
+                    .findActiveSubscriptionsGroupedByApp(orgId)
                     .mapValues { (_, items) ->
                         items.map(::enrichForClient)
                     }
@@ -38,7 +39,6 @@ class SubscriptionsService(
             logger.error("[billing:subscriptions] failed to fetch active subscriptions org={}", orgId, e)
             ActiveSubscriptionsResult.InternalError
         }
-    }
 
     suspend fun cancelSubscriptionAtPeriodEnd(
         orgId: String,
@@ -49,11 +49,12 @@ class SubscriptionsService(
         }
 
         val result = polarClient.cancelSubscriptionAtPeriodEnd(polarSubscriptionId)
-        val body = result.value
-            ?: return when (result.statusCode) {
-                404 -> CancelSubscriptionResult.NotFound(polarSubscriptionId)
-                else -> CancelSubscriptionResult.PolarUnavailable
-            }
+        val body =
+            result.value
+                ?: return when (result.statusCode) {
+                    404 -> CancelSubscriptionResult.NotFound(polarSubscriptionId)
+                    else -> CancelSubscriptionResult.PolarUnavailable
+                }
 
         val endsAt = body["current_period_end"]?.jsonPrimitive?.contentOrNull
         subscriptionRepository.markCancelAtPeriodEnd(polarSubscriptionId, endsAt)

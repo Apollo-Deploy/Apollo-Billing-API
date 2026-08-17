@@ -20,7 +20,6 @@ class RedisPool private constructor(
     private val connection: StatefulRedisConnection<String, String>?,
     private val commands: RedisAsyncCommands<String, String>?,
 ) : AutoCloseable {
-
     /**
      * Indicates whether the Redis connection exists and is currently open.
      *
@@ -39,8 +38,7 @@ class RedisPool private constructor(
      *
      * Runtime Redis failures are propagated to the caller.
      */
-    suspend fun get(key: String): String? =
-        commands?.get(key)?.await()
+    suspend fun get(key: String): String? = commands?.get(key)?.await()
 
     /**
      * Stores a value with an expiry.
@@ -137,8 +135,7 @@ class RedisPool private constructor(
                             if (password.isNotBlank()) {
                                 withPassword(password.toCharArray())
                             }
-                        }
-                        .build()
+                        }.build()
 
                 val createdClient = LettuceClient.create(uri)
                 client = createdClient
@@ -176,8 +173,7 @@ class RedisPool private constructor(
         /**
          * Connection-free instance for offline OpenAPI export.
          */
-        fun createStub(): RedisPool =
-            unavailable
+        fun createStub(): RedisPool = unavailable
 
         private fun requirePositiveTtl(ttlSeconds: Long) {
             require(ttlSeconds > 0) {

@@ -54,16 +54,18 @@ class SubscriptionsQueryRepo(
         LIMIT 1
         """.trimIndent()
 
-    fun findActiveSubscriptionsGroupedByApp(orgId: String): Map<String, List<SubscriptionItem>> {
-        return db.withConnection { conn ->
+    fun findActiveSubscriptionsGroupedByApp(orgId: String): Map<String, List<SubscriptionItem>> =
+        db.withConnection { conn ->
             conn
                 .prepareAndQuery(SQL_ACTIVE_SUBSCRIPTIONS_BY_ORG, listOf(orgId)) { rs ->
                     rs.getString("app_slug") to mapSubscriptionRow(rs)
                 }.groupBy({ it.first }, { it.second })
         }
-    }
 
-    fun findActiveSubscriptionForOrg(orgId: String, polarSubscriptionId: String): SubscriptionItem? =
+    fun findActiveSubscriptionForOrg(
+        orgId: String,
+        polarSubscriptionId: String,
+    ): SubscriptionItem? =
         db.withConnection { conn ->
             conn
                 .prepareAndQuery(SQL_ACTIVE_SUBSCRIPTION_FOR_ORG, listOf(orgId, polarSubscriptionId)) { rs ->

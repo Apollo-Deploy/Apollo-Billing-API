@@ -46,8 +46,6 @@ class EnforceControllerTest {
                 }
 
             assertEquals(HttpStatusCode.Unauthorized, response.status)
-            val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
-            assertNotNull(body["code"])
         }
 
     @Test

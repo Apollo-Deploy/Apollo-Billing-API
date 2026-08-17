@@ -25,15 +25,19 @@ data class BillingCheck(
     val meterKey: String? = null,
     val needed: Int? = null,
 ) {
+    @Suppress("ktlint:standard:function-naming")
     companion object {
-        fun Quota(resource: String, limitKey: String) =
-            BillingCheck(type = "quota", resource = resource, limitKey = limitKey)
+        fun Quota(
+            resource: String,
+            limitKey: String,
+        ) = BillingCheck(type = "quota", resource = resource, limitKey = limitKey)
 
-        fun Feature(feature: String) =
-            BillingCheck(type = "feature", feature = feature)
+        fun Feature(feature: String) = BillingCheck(type = "feature", feature = feature)
 
-        fun Meter(meterKey: String, needed: Int = 1) =
-            BillingCheck(type = "meter", meterKey = meterKey, needed = needed)
+        fun Meter(
+            meterKey: String,
+            needed: Int = 1,
+        ) = BillingCheck(type = "meter", meterKey = meterKey, needed = needed)
     }
 }
 
