@@ -134,13 +134,7 @@ HEALTHCHECK \
 
 STOPSIGNAL SIGTERM
 
-CMD [
-    "./gradlew",
-    "run",
-    "--no-daemon",
-    "--console=plain",
-    "-Pio.ktor.development=true"
-]
+CMD ["./gradlew", "run", "--no-daemon", "--console=plain", "-Pio.ktor.development=true"]
 
 
 # ── Detect required Java modules ─────────────────────────────────────────────
