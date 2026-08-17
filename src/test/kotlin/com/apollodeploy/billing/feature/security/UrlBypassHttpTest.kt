@@ -5,7 +5,7 @@ import com.apollodeploy.billing.feature.checkout.api.checkoutRoutes
 import com.apollodeploy.billing.feature.checkout.application.CheckoutService
 import com.apollodeploy.billing.feature.checkout.domain.CreateCheckoutResult
 import com.apollodeploy.billing.support.billingTestApplication
-import com.apollodeploy.billing.support.noAuthInternalRoutes
+import com.apollodeploy.billing.support.machineAuthenticatedRoutes
 import com.apollodeploy.billing.support.validServiceToken
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -43,7 +43,7 @@ class UrlBypassHttpTest {
 
     private fun expectRejected(url: String) =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { checkoutRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { checkoutRoutes(controller) } },
         ) {
             coEvery { checkoutService.createCheckout(any()) } returns
                 CreateCheckoutResult.InvalidUrl(field = "successUrl", reason = "blocked")
@@ -142,7 +142,7 @@ class UrlBypassHttpTest {
     @Test
     fun `valid HTTPS on apollodeploy_com passes`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { checkoutRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { checkoutRoutes(controller) } },
         ) {
             coEvery { checkoutService.createCheckout(any()) } returns
                 CreateCheckoutResult.UnknownProduct("signal", "signal-ignite")
@@ -160,7 +160,7 @@ class UrlBypassHttpTest {
     @Test
     fun `valid HTTPS with path segments passes`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { checkoutRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { checkoutRoutes(controller) } },
         ) {
             coEvery { checkoutService.createCheckout(any()) } returns
                 CreateCheckoutResult.UnknownProduct("signal", "signal-ignite")
@@ -177,7 +177,7 @@ class UrlBypassHttpTest {
     @Test
     fun `null successUrl passes (optional field)`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { checkoutRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { checkoutRoutes(controller) } },
         ) {
             coEvery { checkoutService.createCheckout(any()) } returns
                 CreateCheckoutResult.UnknownProduct("signal", "signal-ignite")

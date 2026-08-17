@@ -44,6 +44,7 @@ data class PolarConfig(
 
 data class PlatformConfig(
     val url: String,
+    val audienceUrl: String,
     val clientId: String,
     val clientSecret: String,
 )
@@ -95,6 +96,7 @@ private fun Config.toPolarConfig() =
 private fun Config.toPlatformConfig() =
     PlatformConfig(
         url = getString("url"),
+        audienceUrl = getString("audience-url"),
         clientId = getString("client-id"),
         clientSecret = getString("client-secret"),
     )

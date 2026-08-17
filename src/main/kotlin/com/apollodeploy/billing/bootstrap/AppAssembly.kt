@@ -34,7 +34,7 @@ import com.apollodeploy.billing.feature.webhook.application.PolarWebhookService
 import com.apollodeploy.billing.feature.webhook.infrastructure.persistence.PolarWebhookRepo
 import com.apollodeploy.billing.infrastructure.audit.AuditLogClient
 import com.apollodeploy.billing.infrastructure.config.AppConfig
-import com.apollodeploy.billing.infrastructure.iam.OAuthM2mClient
+import com.apollodeploy.oauth.m2m.client.MachineOAuthClient
 import com.apollodeploy.billing.infrastructure.persistence.DatabasePool
 import com.apollodeploy.billing.infrastructure.persistence.SubscriptionRepo
 import com.apollodeploy.billing.infrastructure.polar.PolarClient
@@ -47,6 +47,7 @@ import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNamingStrategy
 import org.slf4j.LoggerFactory
 
 private const val SIGNAL_APP = "signal"
@@ -56,6 +57,7 @@ private val HTTP_JSON =
     Json {
         ignoreUnknownKeys = true
         explicitNulls = false
+        namingStrategy = JsonNamingStrategy.SnakeCase
     }
 
 /**
@@ -66,7 +68,7 @@ private val HTTP_JSON =
 class AppAssembly private constructor(
     val appRegistry: AppRegistry,
     val polarClient: PolarClient,
-    val oAuthM2mClient: OAuthM2mClient,
+    val oAuthM2mClient: MachineOAuthClient,
     val httpClient: HttpClient,
     val healthController: HealthController,
     val productCatalogController: ProductCatalogController,
@@ -88,44 +90,44 @@ class AppAssembly private constructor(
         private val logger = LoggerFactory.getLogger(AppAssembly::class.java)
 
         fun create(): AppAssembly =
-            create(manifestOnly = false)
+            create(openApiExportOnly = false)
 
         /**
          * Creates an assembly without opening external database or Redis connections.
          */
-        fun createForManifest(): AppAssembly =
-            create(manifestOnly = true)
+        fun createForOpenApiExport(): AppAssembly =
+            create(openApiExportOnly = true)
 
-        private fun create(manifestOnly: Boolean): AppAssembly {
+        private fun create(openApiExportOnly: Boolean): AppAssembly {
             logger.info(
                 "Assembling Apollo Billing{}",
-                if (manifestOnly) " in manifest mode" else "",
+                if (openApiExportOnly) " for OpenAPI export" else "",
             )
 
             val httpClient = buildHttpClient()
             val db =
-                if (manifestOnly) {
+                if (openApiExportOnly) {
                     DatabasePool.createStub()
                 } else {
                     DatabasePool.create()
                 }
 
             val platformReaderDb =
-                if (manifestOnly) {
+                if (openApiExportOnly) {
                     db
                 } else {
                     DatabasePool.createPlatformReader()
                 }
 
             val signalDb =
-                if (manifestOnly) {
+                if (openApiExportOnly) {
                     null
                 } else {
                     DatabasePool.createSignal()
                 }
 
             val redis =
-                if (manifestOnly) {
+                if (openApiExportOnly) {
                     null
                 } else {
                     RedisPool.create()
@@ -133,8 +135,8 @@ class AppAssembly private constructor(
 
             val subscriptionRepo = SubscriptionRepo(db)
             val polarClient = buildPolarClient(httpClient)
-            val oAuthM2mClient = buildOAuthM2mClient(httpClient, manifestOnly)
-            val auditLogClient = buildAuditLogClient(httpClient, manifestOnly)
+            val oAuthM2mClient = buildOAuthM2mClient(httpClient)
+            val auditLogClient = buildAuditLogClient(httpClient, openApiExportOnly, oAuthM2mClient)
 
             val polarStateCache =
                 redis?.let { PolarStateCache(polarClient, it) }
@@ -198,7 +200,7 @@ class AppAssembly private constructor(
                 invoicesController = controllers.invoices,
                 db = db,
                 platformReaderDb =
-                    if (manifestOnly) {
+                    if (openApiExportOnly) {
                         null
                     } else {
                         platformReaderDb
@@ -225,26 +227,38 @@ class AppAssembly private constructor(
 
         private fun buildOAuthM2mClient(
             httpClient: HttpClient,
-            manifestOnly: Boolean,
-        ): OAuthM2mClient =
-            OAuthM2mClient(
-                httpClient = httpClient,
-                platformUrl = if (manifestOnly) "" else AppConfig.platform.url,
-                clientId = if (manifestOnly) "" else AppConfig.platform.clientId,
-                clientSecret = if (manifestOnly) "" else AppConfig.platform.clientSecret,
-                timeoutMs = AppConfig.iam.requestTimeoutMs,
-            )
+        ): MachineOAuthClient = MachineOAuthClient {
+            val platformUrl = AppConfig.platform.url
+                .takeIf(String::isNotBlank)
+                ?: error("PLATFORM_URL is required")
+            val audience = AppConfig.platform.audienceUrl
+                .takeIf(String::isNotBlank)
+                ?: error("PLATFORM_AUDIENCE_URL is required")
+            require(AppConfig.platform.clientId.isNotBlank()) {
+                "PLATFORM_CLIENT_ID is required"
+            }
+            require(AppConfig.platform.clientSecret.isNotBlank()) {
+                "PLATFORM_CLIENT_SECRET is required"
+            }
+            tokenEndpoint("${platformUrl.trimEnd('/')}/auth/oauth2/token")
+            clientId(AppConfig.platform.clientId)
+            clientSecret(AppConfig.platform.clientSecret)
+            audience(audience)
+            httpClient(httpClient)
+            clientSecretPost()
+            if (platformUrl.startsWith("http://", ignoreCase = true)) allowInsecureHttp()
+        }
 
         private fun buildAuditLogClient(
             httpClient: HttpClient,
-            manifestOnly: Boolean,
+            openApiExportOnly: Boolean,
+            m2mClient: MachineOAuthClient,
         ): AuditLogClient =
             AuditLogClient(
                 httpClient = httpClient,
-                platformUrl = if (manifestOnly) "" else AppConfig.platform.url,
-                clientId = if (manifestOnly) "" else AppConfig.platform.clientId,
-                clientSecret = if (manifestOnly) "" else AppConfig.platform.clientSecret,
-                enabled = !manifestOnly,
+                platformUrl = if (openApiExportOnly) "" else AppConfig.platform.url,
+                m2mClient = m2mClient,
+                enabled = !openApiExportOnly,
             )
 
         private class Controllers(

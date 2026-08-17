@@ -2,7 +2,14 @@ package com.apollodeploy.billing.feature.customer.domain
 
 import com.apollodeploy.billing.infrastructure.polar.model.PolarBillingAddressInput
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNamingStrategy
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
 data class UpdateCustomerBillingInfoRequest(
@@ -18,18 +25,70 @@ data class UpdateCustomerBillingInfoRequest(
     val defaultPaymentMethodId: String? = null,
 )
 
+/**
+ * Concrete Polar customer fields returned by billing-info update / set-default.
+ *
+ * Fields are camelCase. polarPassthroughJson uses JsonNamingStrategy.SnakeCase
+ * to decode from Polar's snake_case wire format. ApiJson (no strategy) encodes
+ * these as camelCase in API responses, matching what the billing SDK expects.
+ */
+@Serializable
+data class CustomerBillingProfile(
+    val id: String = "",
+    val externalId: String? = null,
+    val email: String? = null,
+    val name: String? = null,
+    val type: String? = null,
+    val billingName: String? = null,
+    val billingAddress: PolarBillingAddressInput? = null,
+    /** Polar returns `[value, format]` or null; we expose the value only. */
+    val taxId: String? = null,
+    val defaultPaymentMethodId: String? = null,
+)
+
 @Serializable
 data class UpdateCustomerBillingInfoResponse(
-    val customer: JsonObject,
+    val customer: CustomerBillingProfile,
+)
+
+@Serializable
+data class PaymentMethodCardMetadata(
+    val brand: String? = null,
+    val last4: String? = null,
+    val expMonth: Int? = null,
+    val expYear: Int? = null,
+    val wallet: String? = null,
+)
+
+@Serializable
+data class CustomerPaymentMethodItem(
+    val id: String,
+    val type: String = "card",
+    val isDefault: Boolean = false,
+    val customerId: String? = null,
+    val processor: String? = null,
+    val methodMetadata: PaymentMethodCardMetadata? = null,
+)
+
+@Serializable
+data class PaymentMethodsPagination(
+    val totalCount: Int = 0,
+    val maxPage: Int = 0,
+)
+
+/**
+ * Polar paginated payment-method list (`items` + `pagination`).
+ * Each item includes `is_default` for the customer's default payment method.
+ */
+@Serializable
+data class CustomerPaymentMethodsPage(
+    val items: List<CustomerPaymentMethodItem> = emptyList(),
+    val pagination: PaymentMethodsPagination = PaymentMethodsPagination(),
 )
 
 @Serializable
 data class ListCustomerPaymentMethodsResponse(
-    /**
-     * Polar paginated list (`items` + `pagination`). Each item includes
-     * `is_default` indicating whether it is the customer's default payment method.
-     */
-    val paymentMethods: JsonObject,
+    val paymentMethods: CustomerPaymentMethodsPage,
 )
 
 @Serializable
@@ -73,7 +132,7 @@ data class ProvisionCustomerResponse(
 
 @Serializable
 data class SetDefaultPaymentMethodResponse(
-    val customer: JsonObject,
+    val customer: CustomerBillingProfile,
 )
 
 @Serializable
@@ -120,3 +179,28 @@ fun UpdateCustomerBillingInfoRequest.hasAnyUpdate(): Boolean =
         billingAddress != null ||
         taxId != null ||
         defaultPaymentMethodId != null
+
+private val polarPassthroughJson =
+    Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+        namingStrategy = JsonNamingStrategy.SnakeCase
+    }
+
+internal fun JsonObject.toCustomerBillingProfile(): CustomerBillingProfile =
+    runCatching {
+        // Polar returns tax_id as [value, format] array or a plain string.
+        // Decode first, then override taxId with the extracted value.
+        val taxId =
+            when (val tax = this["tax_id"]) {
+                is JsonArray -> tax.firstOrNull()?.jsonPrimitive?.contentOrNull
+                is JsonPrimitive -> tax.contentOrNull
+                else -> null
+            }
+        polarPassthroughJson.decodeFromJsonElement<CustomerBillingProfile>(this).copy(taxId = taxId)
+    }.getOrDefault(CustomerBillingProfile())
+
+internal fun JsonObject.toCustomerPaymentMethodsPage(): CustomerPaymentMethodsPage =
+    runCatching {
+        polarPassthroughJson.decodeFromJsonElement<CustomerPaymentMethodsPage>(this)
+    }.getOrDefault(CustomerPaymentMethodsPage())

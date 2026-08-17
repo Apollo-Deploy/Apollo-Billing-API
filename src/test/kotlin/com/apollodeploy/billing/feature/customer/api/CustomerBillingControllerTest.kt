@@ -1,11 +1,13 @@
 package com.apollodeploy.billing.feature.customer.api
 
 import com.apollodeploy.billing.feature.customer.application.CustomerBillingService
+import com.apollodeploy.billing.feature.customer.domain.CustomerBillingProfile
 import com.apollodeploy.billing.feature.customer.domain.CustomerBillingResult
+import com.apollodeploy.billing.feature.customer.domain.CustomerPaymentMethodsPage
 import com.apollodeploy.billing.feature.customer.domain.ListCustomerPaymentMethodsResponse
 import com.apollodeploy.billing.feature.customer.domain.UpdateCustomerBillingInfoResponse
 import com.apollodeploy.billing.support.billingTestApplication
-import com.apollodeploy.billing.support.noAuthInternalRoutes
+import com.apollodeploy.billing.support.machineAuthenticatedRoutes
 import com.apollodeploy.billing.support.validServiceToken
 import io.kotest.property.Arb
 import io.kotest.property.arbitrary.element
@@ -26,7 +28,6 @@ import io.mockk.coEvery
 import io.mockk.mockk
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
@@ -46,7 +47,7 @@ class CustomerBillingControllerTest {
     @Test
     fun `PATCH billing-info without Authorization header returns HTTP 401`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { customerBillingRoutes(controller) } },
         ) {
             val response =
                 client.patch("/internal/billing/customer/billing-info") {
@@ -60,10 +61,12 @@ class CustomerBillingControllerTest {
     @Test
     fun `PATCH billing-info Success returns HTTP 200 with customer field`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { customerBillingRoutes(controller) } },
         ) {
             coEvery { customerBillingService.updateBillingInfo(any()) } returns
-                CustomerBillingResult.Success(UpdateCustomerBillingInfoResponse(buildJsonObject {}))
+                CustomerBillingResult.Success(
+                    UpdateCustomerBillingInfoResponse(CustomerBillingProfile(id = "cust_1")),
+                )
 
             val response =
                 client.patch("/internal/billing/customer/billing-info") {
@@ -80,7 +83,7 @@ class CustomerBillingControllerTest {
     @Test
     fun `PATCH billing-info InvalidRequest returns HTTP 400 with code and message`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { customerBillingRoutes(controller) } },
         ) {
             coEvery { customerBillingService.updateBillingInfo(any()) } returns
                 CustomerBillingResult.InvalidRequest("orgId is required")
@@ -101,7 +104,7 @@ class CustomerBillingControllerTest {
     @Test
     fun `PATCH billing-info PolarFailure 404 returns HTTP 404 with all error fields`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { customerBillingRoutes(controller) } },
         ) {
             coEvery { customerBillingService.updateBillingInfo(any()) } returns
                 CustomerBillingResult.PolarFailure(
@@ -127,7 +130,7 @@ class CustomerBillingControllerTest {
     @Test
     fun `PATCH billing-info PolarFailure 422 returns HTTP 422`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { customerBillingRoutes(controller) } },
         ) {
             coEvery { customerBillingService.updateBillingInfo(any()) } returns
                 CustomerBillingResult.PolarFailure(
@@ -149,7 +152,7 @@ class CustomerBillingControllerTest {
     @Test
     fun `PATCH billing-info PolarFailure 500 returns HTTP 502 BadGateway`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { customerBillingRoutes(controller) } },
         ) {
             coEvery { customerBillingService.updateBillingInfo(any()) } returns
                 CustomerBillingResult.PolarFailure(
@@ -175,7 +178,7 @@ class CustomerBillingControllerTest {
     @Test
     fun `GET payment-methods without Authorization header returns HTTP 401`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { customerBillingRoutes(controller) } },
         ) {
             val response = client.get("/internal/billing/customer/payment-methods?orgId=org_1")
 
@@ -185,10 +188,12 @@ class CustomerBillingControllerTest {
     @Test
     fun `GET payment-methods Success returns HTTP 200 with paymentMethods field`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { customerBillingRoutes(controller) } },
         ) {
             coEvery { customerBillingService.listPaymentMethods(any(), any(), any()) } returns
-                CustomerBillingResult.Success(ListCustomerPaymentMethodsResponse(buildJsonObject {}))
+                CustomerBillingResult.Success(
+                    ListCustomerPaymentMethodsResponse(CustomerPaymentMethodsPage()),
+                )
 
             val response =
                 client.get("/internal/billing/customer/payment-methods?orgId=org_1") {
@@ -203,7 +208,7 @@ class CustomerBillingControllerTest {
     @Test
     fun `GET payment-methods InvalidRequest returns HTTP 400`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { customerBillingRoutes(controller) } },
         ) {
             coEvery { customerBillingService.listPaymentMethods(any(), any(), any()) } returns
                 CustomerBillingResult.InvalidRequest("orgId required")
@@ -223,7 +228,7 @@ class CustomerBillingControllerTest {
     @Test
     fun `DELETE payment-method without Authorization header returns HTTP 401`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { customerBillingRoutes(controller) } },
         ) {
             val response = client.delete("/internal/billing/customer/payment-methods/pm_abc?orgId=org_1")
 
@@ -233,7 +238,7 @@ class CustomerBillingControllerTest {
     @Test
     fun `DELETE payment-method Success returns HTTP 204 with empty body`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { customerBillingRoutes(controller) } },
         ) {
             coEvery { customerBillingService.deletePaymentMethod(any(), any()) } returns
                 CustomerBillingResult.Success(Unit)
@@ -250,7 +255,7 @@ class CustomerBillingControllerTest {
     @Test
     fun `DELETE payment-method InvalidRequest returns HTTP 400 with billing_invalid_request code`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { customerBillingRoutes(controller) } },
         ) {
             coEvery { customerBillingService.deletePaymentMethod(any(), any()) } returns
                 CustomerBillingResult.InvalidRequest("orgId required")
@@ -268,7 +273,7 @@ class CustomerBillingControllerTest {
     @Test
     fun `DELETE payment-method PolarFailure 404 returns HTTP 404`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { customerBillingRoutes(controller) } },
         ) {
             coEvery { customerBillingService.deletePaymentMethod(any(), any()) } returns
                 CustomerBillingResult.PolarFailure(
@@ -304,7 +309,7 @@ class CustomerBillingControllerTest {
             forAll(nonBlankMessage) { message ->
                 var passed = false
                 billingTestApplication(
-                    routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+                    routes = { machineAuthenticatedRoutes { customerBillingRoutes(controller) } },
                 ) {
                     coEvery { customerBillingService.updateBillingInfo(any()) } returns
                         CustomerBillingResult.InvalidRequest(message)
@@ -344,7 +349,7 @@ class CustomerBillingControllerTest {
             forAll(Arb.element(400, 404, 422, 500, 503)) { polarStatus ->
                 var passed = false
                 billingTestApplication(
-                    routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+                    routes = { machineAuthenticatedRoutes { customerBillingRoutes(controller) } },
                 ) {
                     coEvery { customerBillingService.updateBillingInfo(any()) } returns
                         CustomerBillingResult.PolarFailure(

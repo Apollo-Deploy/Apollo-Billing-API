@@ -14,7 +14,7 @@ import com.apollodeploy.billing.feature.webhook.api.polarWebhookRoutes
 import com.apollodeploy.billing.feature.webhook.application.PolarWebhookService
 import com.apollodeploy.billing.feature.webhook.domain.PolarWebhookResult
 import com.apollodeploy.billing.support.billingTestApplication
-import com.apollodeploy.billing.support.noAuthInternalRoutes
+import com.apollodeploy.billing.support.machineAuthenticatedRoutes
 import com.apollodeploy.billing.support.validServiceToken
 import io.ktor.client.request.header
 import io.ktor.client.request.patch
@@ -93,7 +93,7 @@ class InformationLeakageHttpTest {
     @Test
     fun `enforce 422 does not leak internal details`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { enforceRoutes(enforceController) } },
+            routes = { machineAuthenticatedRoutes { enforceRoutes(enforceController) } },
         ) {
             coEvery { enforceService.enforce(any(), any()) } returns
                 EnforceResult.Rejected(
@@ -113,7 +113,7 @@ class InformationLeakageHttpTest {
     @Test
     fun `enforce 503 does not leak DB connection details`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { enforceRoutes(enforceController) } },
+            routes = { machineAuthenticatedRoutes { enforceRoutes(enforceController) } },
         ) {
             coEvery { enforceService.enforce(any(), any()) } returns
                 EnforceResult.Rejected(
@@ -133,7 +133,7 @@ class InformationLeakageHttpTest {
     @Test
     fun `enforce malformed body does not leak serializer internals`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { enforceRoutes(enforceController) } },
+            routes = { machineAuthenticatedRoutes { enforceRoutes(enforceController) } },
         ) {
             val r =
                 client.post("/internal/billing/enforce") {
@@ -149,7 +149,7 @@ class InformationLeakageHttpTest {
     @Test
     fun `customer billing Polar 422 does not expose raw Polar error`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { customerBillingRoutes(customerController) } },
+            routes = { machineAuthenticatedRoutes { customerBillingRoutes(customerController) } },
         ) {
             coEvery { customerService.updateBillingInfo(any()) } returns
                 CustomerBillingResult.PolarFailure(
@@ -179,7 +179,7 @@ class InformationLeakageHttpTest {
     @Test
     fun `customer billing Polar 502 does not expose upstream infrastructure`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { customerBillingRoutes(customerController) } },
+            routes = { machineAuthenticatedRoutes { customerBillingRoutes(customerController) } },
         ) {
             coEvery { customerService.updateBillingInfo(any()) } returns
                 CustomerBillingResult.PolarFailure(
@@ -205,7 +205,7 @@ class InformationLeakageHttpTest {
     @Test
     fun `customer billing Polar 500 does not expose Polar stack trace`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { customerBillingRoutes(customerController) } },
+            routes = { machineAuthenticatedRoutes { customerBillingRoutes(customerController) } },
         ) {
             coEvery { customerService.updateBillingInfo(any()) } returns
                 CustomerBillingResult.PolarFailure(
@@ -276,7 +276,7 @@ class InformationLeakageHttpTest {
     @Test
     fun `auth failure does not reveal which field failed (iss vs aud vs exp)`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { enforceRoutes(enforceController) } },
+            routes = { machineAuthenticatedRoutes { enforceRoutes(enforceController) } },
         ) {
             val r =
                 client.post("/internal/billing/enforce") {

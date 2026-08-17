@@ -4,7 +4,7 @@ import com.apollodeploy.billing.feature.enforce.application.EnforceService
 import com.apollodeploy.billing.feature.enforce.domain.BillingErrorResponse
 import com.apollodeploy.billing.feature.enforce.domain.EnforceResult
 import com.apollodeploy.billing.support.billingTestApplication
-import com.apollodeploy.billing.support.noAuthInternalRoutes
+import com.apollodeploy.billing.support.machineAuthenticatedRoutes
 import com.apollodeploy.billing.support.validServiceToken
 import io.kotest.property.Arb
 import io.kotest.property.arbitrary.element
@@ -37,7 +37,7 @@ class EnforceControllerTest {
     @Test
     fun `POST enforce without Authorization header returns HTTP 401`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { enforceRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { enforceRoutes(controller) } },
         ) {
             val response =
                 client.post("/internal/billing/enforce") {
@@ -53,7 +53,7 @@ class EnforceControllerTest {
     @Test
     fun `POST enforce with structurally invalid JWT returns HTTP 401`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { enforceRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { enforceRoutes(controller) } },
         ) {
             val response =
                 client.post("/internal/billing/enforce") {
@@ -68,7 +68,7 @@ class EnforceControllerTest {
     @Test
     fun `POST enforce Allowed branch returns HTTP 200 with allowed true`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { enforceRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { enforceRoutes(controller) } },
         ) {
             coEvery { enforceService.enforce(any(), any()) } returns EnforceResult.Allowed
 
@@ -87,7 +87,7 @@ class EnforceControllerTest {
     @Test
     fun `POST enforce Rejected 402 returns HTTP 402 with code and message fields`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { enforceRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { enforceRoutes(controller) } },
         ) {
             coEvery { enforceService.enforce(any(), any()) } returns
                 EnforceResult.Rejected(
@@ -111,7 +111,7 @@ class EnforceControllerTest {
     @Test
     fun `POST enforce Rejected 404 returns HTTP 404`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { enforceRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { enforceRoutes(controller) } },
         ) {
             coEvery { enforceService.enforce(any(), any()) } returns
                 EnforceResult.Rejected(
@@ -132,7 +132,7 @@ class EnforceControllerTest {
     @Test
     fun `POST enforce Rejected 422 returns HTTP 422`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { enforceRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { enforceRoutes(controller) } },
         ) {
             coEvery { enforceService.enforce(any(), any()) } returns
                 EnforceResult.Rejected(
@@ -153,7 +153,7 @@ class EnforceControllerTest {
     @Test
     fun `POST enforce Rejected 500 returns HTTP 500`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { enforceRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { enforceRoutes(controller) } },
         ) {
             coEvery { enforceService.enforce(any(), any()) } returns
                 EnforceResult.Rejected(
@@ -185,7 +185,7 @@ class EnforceControllerTest {
             forAll(Arb.element(402, 404, 422, 500)) { statusCode ->
                 var actualStatus = -1
                 billingTestApplication(
-                    routes = { noAuthInternalRoutes { enforceRoutes(controller) } },
+                    routes = { machineAuthenticatedRoutes { enforceRoutes(controller) } },
                 ) {
                     coEvery { enforceService.enforce(any(), any()) } returns
                         EnforceResult.Rejected(

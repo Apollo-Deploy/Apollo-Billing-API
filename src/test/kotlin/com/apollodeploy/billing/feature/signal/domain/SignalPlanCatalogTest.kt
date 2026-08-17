@@ -192,12 +192,16 @@ class SignalPlanCatalogTest {
         }
     }
 
-    // ─── 7.19 signal-spark has customTrackingDomain=false and readEngagement=false ────────────
+    // ─── 7.19 tracking availability ───────────────────────────────────────────────
 
     @Test
-    fun `signal-spark has customTrackingDomain false and readEngagement false`() {
+    fun `all signal plans include custom tracking domains`() {
+        assertTrue(signalPlans.all { it.entitlements.customTrackingDomain })
+    }
+
+    @Test
+    fun `signal-spark excludes read engagement`() {
         val spark = signalPlans.first { it.slug == "signal-spark" }
-        assertFalse(spark.entitlements.customTrackingDomain)
         assertFalse(spark.entitlements.readEngagement)
     }
 

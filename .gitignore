@@ -71,17 +71,14 @@ java_pid*.hprof
 *.rebel.xml
 .jrebel/
 
-# ── Generated SDKs (Tesseract) ───────────────────────────────────────────────
+# ── Generated SDKs ───────────────────────────────────────────────────────────
 sdk/
 sdk/**
 *.tgz
 
-# ── Generated OpenAPI / manifests / reports ──────────────────────────────────
+# ── Generated OpenAPI / reports ──────────────────────────────────────────────
 docs/openapi.json
 **/openapi.generated.json
-build/tesseract/
-**/tesseract-manifest*.json
-**/billing-manifest.json
 
 # Test / coverage reports (also covered by build/, kept explicit)
 build/reports/

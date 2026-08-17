@@ -1,20 +1,41 @@
 package com.apollodeploy.billing.feature.enforce.api
 
 import com.apollodeploy.billing.feature.enforce.application.EnforceService
+import com.apollodeploy.billing.feature.enforce.domain.BillingErrorResponse
 import com.apollodeploy.billing.feature.enforce.domain.EnforceRequest
 import com.apollodeploy.billing.feature.enforce.domain.EnforceResponse
 import com.apollodeploy.billing.feature.enforce.domain.EnforceResult
 import com.apollodeploy.billing.infrastructure.iam.authenticatedClientId
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
-import io.ktor.server.request.receive
+import io.ktor.server.request.contentLength
+import io.ktor.server.request.receiveNullable
 import io.ktor.server.response.respond
 
 class EnforceController(
     private val enforceService: EnforceService,
 ) {
     suspend fun enforce(call: ApplicationCall) {
-        val req = call.receive<EnforceRequest>()
+        if (call.request.contentLength() == 0L) {
+            call.respond(
+                HttpStatusCode.BadRequest,
+                BillingErrorResponse(
+                    code = "billing.invalid_request",
+                    message = "Invalid or missing request body fields",
+                ),
+            )
+            return
+        }
+
+        val req =
+            call.receiveNullable<EnforceRequest>()
+                ?: return call.respond(
+                    HttpStatusCode.BadRequest,
+                    BillingErrorResponse(
+                        code = "billing.invalid_request",
+                        message = "Invalid or missing request body fields",
+                    ),
+                )
         val callerClientId = call.authenticatedClientId()
 
         when (val result = enforceService.enforce(req, callerClientId = callerClientId)) {

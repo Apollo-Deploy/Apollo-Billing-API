@@ -35,11 +35,23 @@ class EnforceService(
                         ),
                 )
 
+        val check = req.check
         val result: Either<BillingError, Unit> =
-            when (val check = req.check) {
-                is BillingCheck.Quota -> enforcer.enforceQuota(req.orgId, check.resource, check.limitKey)
-                is BillingCheck.Feature -> enforcer.enforceFeature(req.orgId, check.feature)
-                is BillingCheck.Meter -> enforcer.enforceMeter(req.orgId, check.meterKey, check.needed)
+            when (check.type) {
+                "quota" -> {
+                    val resource = check.resource ?: return invalidCheck("quota requires resource")
+                    val limitKey = check.limitKey ?: return invalidCheck("quota requires limitKey")
+                    enforcer.enforceQuota(req.orgId, resource, limitKey)
+                }
+                "feature" -> {
+                    val feature = check.feature ?: return invalidCheck("feature requires feature")
+                    enforcer.enforceFeature(req.orgId, feature)
+                }
+                "meter" -> {
+                    val meterKey = check.meterKey ?: return invalidCheck("meter requires meterKey")
+                    enforcer.enforceMeter(req.orgId, meterKey, check.needed ?: 1)
+                }
+                else -> return invalidCheck("unsupported type: ${check.type}")
             }
 
         return result.fold(
@@ -53,6 +65,12 @@ class EnforceService(
             ifRight = { EnforceResult.Allowed },
         )
     }
+
+    private fun invalidCheck(reason: String) =
+        EnforceResult.Rejected(
+            statusCode = 400,
+            error = BillingError.InvalidInput(field = "check", reason = reason).toErrorResponse(),
+        )
 
     private fun logBillingError(
         error: BillingError,

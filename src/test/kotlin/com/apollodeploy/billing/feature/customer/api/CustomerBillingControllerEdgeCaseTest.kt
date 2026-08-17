@@ -3,7 +3,7 @@ package com.apollodeploy.billing.feature.customer.api
 import com.apollodeploy.billing.feature.customer.application.CustomerBillingService
 import com.apollodeploy.billing.feature.customer.domain.CustomerBillingResult
 import com.apollodeploy.billing.support.billingTestApplication
-import com.apollodeploy.billing.support.noAuthInternalRoutes
+import com.apollodeploy.billing.support.machineAuthenticatedRoutes
 import com.apollodeploy.billing.support.validServiceToken
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
@@ -36,7 +36,7 @@ class CustomerBillingControllerEdgeCaseTest {
     @Test
     fun `12_1 - GET payment-methods without orgId query param returns HTTP 400`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { customerBillingRoutes(controller) } },
         ) {
             coEvery { customerBillingService.listPaymentMethods(null, any(), any()) } returns
                 CustomerBillingResult.InvalidRequest("orgId query parameter is required")
@@ -56,7 +56,7 @@ class CustomerBillingControllerEdgeCaseTest {
     @Test
     fun `12_2 - GET payment-methods with whitespace orgId returns HTTP 400`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { customerBillingRoutes(controller) } },
         ) {
             coEvery { customerBillingService.listPaymentMethods(" ", any(), any()) } returns
                 CustomerBillingResult.InvalidRequest("orgId query parameter is required")
@@ -76,7 +76,7 @@ class CustomerBillingControllerEdgeCaseTest {
     @Test
     fun `12_3 - DELETE payment-method without orgId query param returns HTTP 400`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { customerBillingRoutes(controller) } },
         ) {
             coEvery { customerBillingService.deletePaymentMethod(null, any()) } returns
                 CustomerBillingResult.InvalidRequest("orgId query parameter and paymentMethodId path parameter are required")
@@ -96,7 +96,7 @@ class CustomerBillingControllerEdgeCaseTest {
     @Test
     fun `12_4 - PATCH billing-info with blank orgId returns HTTP 400`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { customerBillingRoutes(controller) } },
         ) {
             coEvery { customerBillingService.updateBillingInfo(any()) } returns
                 CustomerBillingResult.InvalidRequest("orgId is required")
@@ -119,7 +119,7 @@ class CustomerBillingControllerEdgeCaseTest {
     @Test
     fun `12_5 - PolarFailure with null statusCode returns HTTP 502 with non-blank code field`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { customerBillingRoutes(controller) } },
         ) {
             coEvery { customerBillingService.updateBillingInfo(any()) } returns
                 CustomerBillingResult.PolarFailure(
@@ -150,7 +150,7 @@ class CustomerBillingControllerEdgeCaseTest {
     @Test
     fun `12_6 - PATCH billing-info missing orgId field returns HTTP 400`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { customerBillingRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { customerBillingRoutes(controller) } },
         ) {
             val response =
                 client.patch("/internal/billing/customer/billing-info") {

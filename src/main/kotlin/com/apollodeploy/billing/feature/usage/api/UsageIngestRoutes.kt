@@ -3,8 +3,6 @@ package com.apollodeploy.billing.feature.usage.api
 import com.apollodeploy.billing.feature.common.api.BillingApiErrorResponse
 import com.apollodeploy.billing.feature.usage.domain.UsageIngestRequest
 import com.apollodeploy.billing.feature.usage.domain.UsageIngestResponse
-import com.apollodeploy.tesseract.sdk
-import com.apollodeploy.tesseract.sdkDomain
 import io.github.smiley4.ktoropenapi.post
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.routing.Route
@@ -22,8 +20,6 @@ import io.ktor.server.routing.route
  * This service forwards it to Polar's event ingestion API.
  */
 fun Route.usageIngestRoutes(controller: UsageIngestController) {
-    sdkDomain("/internal/billing/usage", "billingUsage", stability = "internal")
-
     route("/internal/billing/usage") {
         post("/ingest", {
             operationId = "ingestBillingUsage"
@@ -63,12 +59,6 @@ fun Route.usageIngestRoutes(controller: UsageIngestController) {
             }
         }) {
             controller.ingest(call)
-        }.sdk {
-            operationId = "ingestBillingUsage"
-            methodName = "ingestBillingUsage"
-            internal = true
-            requestBody<UsageIngestRequest>()
-            response<UsageIngestResponse>()
         }
     }
 }

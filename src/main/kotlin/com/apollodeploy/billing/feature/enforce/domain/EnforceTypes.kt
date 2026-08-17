@@ -1,6 +1,5 @@
 package com.apollodeploy.billing.feature.enforce.domain
 
-import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
@@ -14,40 +13,28 @@ data class EnforceRequest(
     val check: BillingCheck,
 )
 
+/**
+ * A concrete billing check selected by [type]: `quota`, `feature`, or `meter`.
+ */
 @Serializable
-sealed class BillingCheck {
-    @Serializable
-    @SerialName("quota")
-    data class Quota(
-        val resource: String,
-        val limitKey: String,
-    ) : BillingCheck()
+data class BillingCheck(
+    val type: String,
+    val resource: String? = null,
+    val limitKey: String? = null,
+    val feature: String? = null,
+    val meterKey: String? = null,
+    val needed: Int? = null,
+) {
+    companion object {
+        fun Quota(resource: String, limitKey: String) =
+            BillingCheck(type = "quota", resource = resource, limitKey = limitKey)
 
-    @Serializable
-    @SerialName("feature")
-    data class Feature(
-        val feature: String,
-    ) : BillingCheck()
+        fun Feature(feature: String) =
+            BillingCheck(type = "feature", feature = feature)
 
-    /**
-     * Polar meter balance check. Used for automation runs and other Polar Credits-backed resources.
-     *
-     * [meterKey]  — key in the usage map (e.g. "automationRunBalance"); populated by
-     *               SignalBillingConfig.resolveUsage() from active_meters[].balance.
-     * [needed]    — minimum balance required (default 1).
-     *
-     * Enforcement: usage[meterKey] >= needed. Unlike quota checks, a higher balance
-     * is BETTER (it’s remaining credits, not consumed ones).
-     *
-     * Fail-open: if the meterKey is absent from usage (Polar unavailable), the
-     * check passes so customers aren’t blocked by billing infrastructure outages.
-     */
-    @Serializable
-    @SerialName("meter")
-    data class Meter(
-        val meterKey: String,
-        val needed: Int = 1,
-    ) : BillingCheck()
+        fun Meter(meterKey: String, needed: Int = 1) =
+            BillingCheck(type = "meter", meterKey = meterKey, needed = needed)
+    }
 }
 
 @Serializable

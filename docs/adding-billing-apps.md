@@ -531,14 +531,13 @@ POLAR_API_KEY="..." make polar-sandbox
 # Production
 POLAR_API_KEY="..." make polar-production
 
-# Or directly, with fine-grained control
-POLAR_API_KEY="..." scripts/polar/setup-signal.sh --env sandbox --setup both
-POLAR_API_KEY="..." scripts/polar/setup-signal.sh --env production --setup email
+# Or directly
+POLAR_API_KEY="..." bash scripts/polar/setup-signal.sh --env sandbox
+POLAR_API_KEY="..." bash scripts/polar/setup-signal.sh --env production
 ```
 
-Use `--setup email`, `--setup sms`, or `--setup both` to control which parts of
-the catalog are created. The script is idempotent — it reuses existing resources
-tagged with the namespace metadata.
+The script creates the Signal email catalog. It is idempotent and reuses
+existing resources tagged with the namespace metadata.
 
 The script reads pricing and product definitions from
 `scripts/polar/signal-catalog.sh`. Update that file to change prices,

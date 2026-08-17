@@ -1,7 +1,7 @@
 plugins {
-    kotlin("jvm") version "2.1.21"
-    kotlin("plugin.serialization") version "2.1.21"
-    id("io.ktor.plugin") version "3.1.1"
+    kotlin("jvm") version "2.3.0"
+    kotlin("plugin.serialization") version "2.3.0"
+    id("io.ktor.plugin") version "3.4.2"
     id("com.gradleup.shadow") version "9.4.2"
     id("org.jlleitschuh.gradle.ktlint") version "12.1.2"
     application
@@ -17,6 +17,7 @@ application {
 kotlin {
     jvmToolchain(21)
     compilerOptions {
+        allWarningsAsErrors.set(true)
         freeCompilerArgs.addAll("-Xjsr305=strict")
         optIn.set(
             listOf(
@@ -27,8 +28,12 @@ kotlin {
     }
 }
 
+tasks.withType<JavaCompile>().configureEach {
+    options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
+}
+
 dependencies {
-    val ktorVersion = "3.1.1"
+    val ktorVersion = "3.4.2"
     val arrowVersion = "2.1.0"
 
     // Ktor Server
@@ -40,8 +45,10 @@ dependencies {
     implementation("io.ktor:ktor-server-rate-limit:$ktorVersion")
     implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")
 
-    // OpenAPI / Scalar docs + Tesseract SDK generation
-    implementation("io.github.smiley4:ktor-openapi:5.2.0")
+    // OpenAPI / Scalar docs
+    implementation("io.github.smiley4:ktor-openapi:5.7.0")
+    implementation("io.github.smiley4:schema-kenerator-core:2.7.2")
+    implementation("io.github.smiley4:schema-kenerator-swagger:2.7.2")
     implementation(kotlin("reflect"))
 
     // Ktor Client (for Polar API calls)
@@ -72,8 +79,13 @@ dependencies {
     implementation("ch.qos.logback:logback-classic:1.5.17")
     implementation("net.logstash.logback:logstash-logback-encoder:8.0")
 
+    // OAuth M2M SDK
+    implementation("com.apollodeploy.oauth:oauth-m2m-client:1.0.1")
+    implementation("com.apollodeploy.oauth:oauth-m2m-ktor:1.0.1")
+
     // Testing
     testImplementation(kotlin("test"))
+    testImplementation("com.apollodeploy.oauth:oauth-m2m-testing:1.0.1")
     testImplementation("io.kotest:kotest-runner-junit5:5.9.1")
     testImplementation("io.kotest:kotest-assertions-core:5.9.1")
     testImplementation("io.ktor:ktor-server-test-host:$ktorVersion")

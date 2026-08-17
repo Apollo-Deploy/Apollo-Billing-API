@@ -1,0 +1,155 @@
+name: Build, sign, and attest container
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: container-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  IMAGE: ghcr.io/apollo-deploy/apollo-billing-api
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  pull-request-build:
+    if: github.event_name == 'pull_request' && github.repository == 'Apollo-Deploy/Apollo-Billing-API'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the reviewed source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Build the production image without publishing
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: ./Dockerfile
+          target: production
+          push: false
+          platforms: linux/amd64
+          build-args: |
+            BUILD_VERSION=pr-${{ github.event.pull_request.number }}
+            BUILD_REVISION=${{ github.sha }}
+          provenance: false
+          sbom: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  publish:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'Apollo-Deploy/Apollo-Billing-API'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - name: Check out the exact source commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Install the pinned signing client
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.0.6
+
+      - name: Verify the pinned client exposes governed SLSA predicates
+        run: |
+          cosign attest --help | grep -F -- '--predicate' >/dev/null
+          cosign attest --help | grep -F -- 'slsaprovenance1' >/dev/null
+
+      - name: Log in to the allowlisted GHCR repository
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish the immutable multi-platform image
+        id: image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: ./Dockerfile
+          target: production
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:sha-${{ github.sha }}
+          build-args: |
+            BUILD_VERSION=sha-${{ github.sha }}
+            BUILD_REVISION=${{ github.sha }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+          provenance: false
+          sbom: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Keylessly sign the exact image digest
+        env:
+          DIGEST: ${{ steps.image.outputs.digest }}
+        run: cosign sign --yes "${IMAGE}@${DIGEST}"
+
+      - name: Publish keylessly signed SLSA v1 build provenance
+        env:
+          DIGEST: ${{ steps.image.outputs.digest }}
+          SOURCE_COMMIT: ${{ github.sha }}
+          SOURCE_REF: refs/heads/main
+          SOURCE_REPOSITORY: Apollo-Deploy/Apollo-Billing-API
+          WORKFLOW_PATH: .github/workflows/docker-publish.yml
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          predicate_file="$RUNNER_TEMP/apollo-slsa-provenance.json"
+          jq -n \
+            --arg source_commit "$SOURCE_COMMIT" \
+            --arg source_ref "$SOURCE_REF" \
+            --arg source_repository "$SOURCE_REPOSITORY" \
+            --arg workflow_path "$WORKFLOW_PATH" \
+            --arg run_id "$RUN_ID" \
+            --arg run_attempt "$RUN_ATTEMPT" \
+            '{
+              buildDefinition: {
+                buildType: "https://actions.github.io/buildtypes/workflow/v1",
+                externalParameters: {
+                  workflow: {
+                    repository: ("https://github.com/" + $source_repository),
+                    ref: $source_ref,
+                    path: $workflow_path
+                  }
+                },
+                internalParameters: {github: {eventName: "push"}},
+                resolvedDependencies: [{
+                  uri: ("git+https://github.com/" + $source_repository + "@" + $source_ref),
+                  digest: {gitCommit: $source_commit}
+                }]
+              },
+              runDetails: {
+                builder: {
+                  id: ("https://github.com/" + $source_repository + "/" + $workflow_path + "@" + $source_ref)
+                },
+                metadata: {
+                  invocationId: ("https://github.com/" + $source_repository + "/actions/runs/" + $run_id + "/attempts/" + $run_attempt)
+                }
+              }
+            }' > "$predicate_file"
+          cosign attest --yes --type slsaprovenance1 --predicate "$predicate_file" "${IMAGE}@${DIGEST}"

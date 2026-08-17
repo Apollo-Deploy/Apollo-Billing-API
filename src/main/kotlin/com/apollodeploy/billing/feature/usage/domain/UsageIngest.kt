@@ -1,7 +1,6 @@
 package com.apollodeploy.billing.feature.usage.domain
 
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonElement
 
 @Serializable
 data class UsageIngestRequest(
@@ -9,7 +8,7 @@ data class UsageIngestRequest(
     val eventKey: String,
     val quantity: Int = 1,
     val idempotencyKey: String? = null,
-    val metadata: Map<String, JsonElement> = emptyMap(),
+    val metadata: Map<String, String> = emptyMap(),
 )
 
 @Serializable

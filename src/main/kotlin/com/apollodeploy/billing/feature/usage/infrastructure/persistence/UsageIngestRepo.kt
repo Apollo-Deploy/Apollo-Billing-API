@@ -3,6 +3,7 @@ package com.apollodeploy.billing.feature.usage.infrastructure.persistence
 import com.apollodeploy.billing.infrastructure.polar.PolarClient
 import com.apollodeploy.billing.infrastructure.redis.RedisPool
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
 
 class UsageIngestRepo(
     private val polarClient: PolarClient,
@@ -17,7 +18,7 @@ class UsageIngestRepo(
         eventKey: String,
         quantity: Int,
         idempotencyKey: String? = null,
-        metadata: Map<String, JsonElement>,
+        metadata: Map<String, String>,
     ): Boolean {
         // Redis-backed idempotency check
         if (idempotencyKey != null && redis != null) {
@@ -28,11 +29,14 @@ class UsageIngestRepo(
             }
         }
 
+        val polarMetadata: Map<String, JsonElement> =
+            metadata.mapValues { (_, value) -> JsonPrimitive(value) }
+
         return polarClient.ingestUsageEvent(
             orgId = orgId,
             eventName = eventKey,
             quantity = quantity,
-            metadata = metadata,
+            metadata = polarMetadata,
         )
     }
 }

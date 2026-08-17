@@ -44,7 +44,7 @@ class UsageIngestService(
                 orgId = req.orgId,
                 eventKey = req.eventKey,
                 quantity = req.quantity,
-                idempotencyKey = req.idempotencyKey ?: req.metadata["messageId"]?.toString()?.trim('"'),
+                idempotencyKey = req.idempotencyKey ?: req.metadata["messageId"]?.takeIf { it.isNotBlank() },
                 metadata = req.metadata,
             )
 

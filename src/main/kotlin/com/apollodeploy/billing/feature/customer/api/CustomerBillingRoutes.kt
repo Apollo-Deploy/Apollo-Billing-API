@@ -11,8 +11,6 @@ import com.apollodeploy.billing.feature.customer.domain.ProvisionCustomerRespons
 import com.apollodeploy.billing.feature.customer.domain.SetDefaultPaymentMethodResponse
 import com.apollodeploy.billing.feature.customer.domain.UpdateCustomerBillingInfoRequest
 import com.apollodeploy.billing.feature.customer.domain.UpdateCustomerBillingInfoResponse
-import com.apollodeploy.tesseract.sdk
-import com.apollodeploy.tesseract.sdkDomain
 import io.github.smiley4.ktoropenapi.delete
 import io.github.smiley4.ktoropenapi.get
 import io.github.smiley4.ktoropenapi.patch
@@ -28,8 +26,6 @@ import io.ktor.server.routing.route
  * user against the org before calling them.
  */
 fun Route.customerBillingRoutes(controller: CustomerBillingController) {
-    sdkDomain("/internal/billing/customer", "billingCustomer", stability = "internal")
-
     route("/internal/billing/customer") {
         post("/provision", {
             operationId = "provisionCustomer"
@@ -78,13 +74,8 @@ fun Route.customerBillingRoutes(controller: CustomerBillingController) {
             }
         }) {
             controller.provisionCustomer(call)
-        }.sdk {
-            operationId = "provisionCustomer"
-            methodName = "provisionCustomer"
-            internal = true
-            requestBody<ProvisionCustomerRequest>()
-            response<ProvisionCustomerResponse>()
         }
+
         patch("/billing-info", {
             operationId = "updateCustomerBillingInfo"
             summary = "Update customer billing profile"
@@ -132,12 +123,6 @@ fun Route.customerBillingRoutes(controller: CustomerBillingController) {
             }
         }) {
             controller.updateBillingInfo(call)
-        }.sdk {
-            operationId = "updateCustomerBillingInfo"
-            methodName = "updateCustomerBillingInfo"
-            internal = true
-            requestBody<UpdateCustomerBillingInfoRequest>()
-            response<UpdateCustomerBillingInfoResponse>()
         }
 
         get("/payment-methods", {
@@ -145,7 +130,7 @@ fun Route.customerBillingRoutes(controller: CustomerBillingController) {
             summary = "List customer payment methods"
             description =
                 "Lists the saved Polar payment methods for the customer mapped to an organization. " +
-                "Each item includes `is_default` so callers can identify the default payment method. " +
+                "Each item includes `isDefault` (serialized as `is_default`) so callers can identify the default payment method. " +
                 "Use this to render payment method management UI from an internal app backend."
             tags("Customer Billing")
             protected = true
@@ -196,15 +181,6 @@ fun Route.customerBillingRoutes(controller: CustomerBillingController) {
             }
         }) {
             controller.listPaymentMethods(call)
-        }.sdk {
-            operationId = "listCustomerPaymentMethods"
-            methodName = "listCustomerPaymentMethods"
-            internal = true
-            queryParam("orgId", required = true, description = "Internal organization identifier.")
-            queryParam("memberId", description = "Requesting user ID for member-model orgs.")
-            queryParam("page", type = "integer", description = "One-based page number.")
-            queryParam("limit", type = "integer", description = "Page size from 1 to 100.")
-            response<ListCustomerPaymentMethodsResponse>()
         }
 
         delete("/payment-methods/{paymentMethodId}", {
@@ -255,13 +231,6 @@ fun Route.customerBillingRoutes(controller: CustomerBillingController) {
             }
         }) {
             controller.deletePaymentMethod(call)
-        }.sdk {
-            operationId = "deleteCustomerPaymentMethod"
-            methodName = "deleteCustomerPaymentMethod"
-            internal = true
-            queryParam("orgId", required = true, description = "Internal organization identifier.")
-            queryParam("memberId", description = "Requesting user ID for member-model orgs.")
-            responseStatus = 204
         }
 
         patch("/payment-methods/{paymentMethodId}/default", {
@@ -309,12 +278,6 @@ fun Route.customerBillingRoutes(controller: CustomerBillingController) {
             }
         }) {
             controller.setDefaultPaymentMethod(call)
-        }.sdk {
-            operationId = "setDefaultPaymentMethod"
-            methodName = "setDefaultPaymentMethod"
-            internal = true
-            queryParam("orgId", required = true, description = "Internal organization identifier.")
-            response<SetDefaultPaymentMethodResponse>()
         }
 
         post("/portal", {
@@ -362,12 +325,6 @@ fun Route.customerBillingRoutes(controller: CustomerBillingController) {
             }
         }) {
             controller.openBillingPortal(call)
-        }.sdk {
-            operationId = "openBillingPortal"
-            methodName = "openBillingPortal"
-            internal = true
-            requestBody<OpenBillingPortalRequest>()
-            response<OpenBillingPortalResponse>()
         }
 
         post("/session", {
@@ -416,12 +373,6 @@ fun Route.customerBillingRoutes(controller: CustomerBillingController) {
             }
         }) {
             controller.createCustomerSession(call)
-        }.sdk {
-            operationId = "createCustomerSession"
-            methodName = "createCustomerSession"
-            internal = true
-            requestBody<CreateCustomerSessionRequest>()
-            response<CreateCustomerSessionResponse>()
         }
     }
 }

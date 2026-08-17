@@ -64,8 +64,14 @@ class InvoicesController(
                     HttpStatusCode.BadRequest,
                     mapOf("code" to "billing.invalid_request", "message" to "Missing invoiceId path parameter"),
                 )
+        val orgId =
+            call.request.queryParameters["orgId"]?.takeIf { it.isNotBlank() }
+                ?: return call.respond(
+                    HttpStatusCode.BadRequest,
+                    mapOf("code" to "billing.invalid_request", "message" to "Missing required query parameter: orgId"),
+                )
 
-        when (val result = invoicesService.getInvoice(invoiceId)) {
+        when (val result = invoicesService.getInvoice(orgId, invoiceId)) {
             is GetInvoiceResult.Found -> call.respond(HttpStatusCode.OK, result.response)
             is GetInvoiceResult.NotFound ->
                 call.respond(
@@ -87,8 +93,14 @@ class InvoicesController(
                     HttpStatusCode.BadRequest,
                     mapOf("code" to "billing.invalid_request", "message" to "Missing invoiceId path parameter"),
                 )
+        val orgId =
+            call.request.queryParameters["orgId"]?.takeIf { it.isNotBlank() }
+                ?: return call.respond(
+                    HttpStatusCode.BadRequest,
+                    mapOf("code" to "billing.invalid_request", "message" to "Missing required query parameter: orgId"),
+                )
 
-        when (val result = invoicesService.getInvoiceMeterUsage(invoiceId)) {
+        when (val result = invoicesService.getInvoiceMeterUsage(orgId, invoiceId)) {
             is GetInvoiceMeterUsageResult.Found -> call.respond(HttpStatusCode.OK, result.response)
             is GetInvoiceMeterUsageResult.NotFound ->
                 call.respond(

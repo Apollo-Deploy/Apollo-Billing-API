@@ -2,16 +2,12 @@ package com.apollodeploy.billing.feature.entitlements.api
 
 import com.apollodeploy.billing.feature.common.api.BillingApiErrorResponse
 import com.apollodeploy.billing.feature.entitlements.domain.EntitlementsResponse
-import com.apollodeploy.tesseract.sdk
-import com.apollodeploy.tesseract.sdkDomain
 import io.github.smiley4.ktoropenapi.get
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.route
 
 fun Route.entitlementsRoutes(controller: EntitlementsController) {
-    sdkDomain("/internal/billing/entitlements", "billingEntitlements", stability = "internal")
-
     /**
      * GET /internal/billing/entitlements/{appSlug}/{orgId}
      * Returns the full entitlement snapshot for an org on a given app.
@@ -63,11 +59,6 @@ fun Route.entitlementsRoutes(controller: EntitlementsController) {
             }
         }) {
             controller.getEntitlements(call)
-        }.sdk {
-            operationId = "getBillingEntitlements"
-            methodName = "getBillingEntitlements"
-            internal = true
-            response<EntitlementsResponse>()
         }
     }
 }

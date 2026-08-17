@@ -15,19 +15,13 @@ import com.apollodeploy.billing.feature.signal.domain.PlanEntitlements
 import com.apollodeploy.billing.feature.signal.domain.SIGNAL_AI_CREDIT_METER_ID
 import com.apollodeploy.billing.feature.signal.domain.SIGNAL_AUTOMATION_RUN_METER_ID
 import com.apollodeploy.billing.feature.signal.domain.SIGNAL_EMAIL_METER_ID
-import com.apollodeploy.billing.feature.signal.domain.SIGNAL_MMS_MESSAGE_METER_ID
-import com.apollodeploy.billing.feature.signal.domain.SIGNAL_SMS_SEGMENT_METER_ID
-import com.apollodeploy.billing.feature.signal.domain.SMS_NO_ADDON_ENTITLEMENTS
 import com.apollodeploy.billing.feature.signal.domain.isDedicatedIpEligibleForPlan
 import com.apollodeploy.billing.feature.signal.domain.isMultiRegionAllowedForPlan
 import com.apollodeploy.billing.feature.signal.domain.signalCatalogProducts
 import com.apollodeploy.billing.feature.signal.domain.signalDedicatedIpAddOn
 import com.apollodeploy.billing.feature.signal.domain.signalFindPlanByProductId
-import com.apollodeploy.billing.feature.signal.domain.signalFindSmsPlanByProductId
 import com.apollodeploy.billing.feature.signal.domain.signalGetFreePlan
 import com.apollodeploy.billing.feature.signal.domain.signalPlans
-import com.apollodeploy.billing.feature.signal.domain.signalSmsPlans
-import com.apollodeploy.billing.feature.signal.domain.toFeatureMap
 import com.apollodeploy.billing.infrastructure.config.AppConfig
 import com.apollodeploy.billing.infrastructure.persistence.DatabasePool
 import com.apollodeploy.billing.infrastructure.persistence.SubscriptionRepo
@@ -41,7 +35,7 @@ import com.apollodeploy.billing.infrastructure.polar.PolarClient
  *
  * Database efficiency: resolves ALL billing state in exactly 2 DB round-trips:
  *   1. Platform DB (billing_superuser): subscriptions + API key count (single CTE query)
- *   2. Signal DB (billing_superuser): projects, domains, webhooks, daily sends
+ *   2. Signal DB (billing_superuser): projects, domains, webhooks, email sends
  *
  * Meter balances come from Polar (via Redis-cached PolarStateCache) — no DB call.
  */
@@ -60,9 +54,6 @@ class SignalBillingConfig(
     private val basePlanProductIds: List<String> =
         signalPlans.map { it.polarProductId }.filter { it.isNotBlank() }
 
-    private val smsProductIds: List<String> =
-        signalSmsPlans.map { it.polarProductId }.filter { it.isNotBlank() }
-
     private val dedicatedIpProductId: String =
         signalDedicatedIpAddOn.polarProductId
 
@@ -73,7 +64,6 @@ class SignalBillingConfig(
      *
      * Returns in one round-trip:
      *   - Active base plan product ID (newest)
-     *   - Active SMS add-on product ID (newest)
      *   - Dedicated IP add-on quantity (sum of active)
      *   - API key count
      *
@@ -82,8 +72,6 @@ class SignalBillingConfig(
      */
     private fun buildPlatformQuery(): String {
         val basePlanPlaceholders = basePlanProductIds.joinToString(",") { "?" }
-        val smsPlaceholders = smsProductIds.joinToString(",") { "?" }
-
         return """
             WITH base_plan AS (
                 SELECT s.polar_product_id
@@ -93,18 +81,6 @@ class SignalBillingConfig(
                 WHERE a.slug = ?
                   AND c.external_ref = ?
                   AND s.polar_product_id IN ($basePlanPlaceholders)
-                  AND s.status IN ('active', 'trialing', 'past_due')
-                ORDER BY s.created_at DESC
-                LIMIT 1
-            ),
-            sms_plan AS (
-                SELECT s.polar_product_id
-                FROM billing_subscriptions s
-                JOIN billing_customers c ON c.app_id = s.app_id AND c.customer_id = s.customer_id
-                JOIN platform_apps a ON a.id = s.app_id
-                WHERE a.slug = ?
-                  AND c.external_ref = ?
-                  AND s.polar_product_id IN ($smsPlaceholders)
                   AND s.status IN ('active', 'trialing', 'past_due')
                 ORDER BY s.created_at DESC
                 LIMIT 1
@@ -128,7 +104,6 @@ class SignalBillingConfig(
             )
             SELECT
                 (SELECT polar_product_id FROM base_plan) AS "basePlanProductId",
-                (SELECT polar_product_id FROM sms_plan) AS "smsPlanProductId",
                 (SELECT cnt FROM dedicated_ip) AS "dedicatedIpQty",
                 (SELECT cnt FROM api_keys) AS "apiKeyCount"
             """.trimIndent()
@@ -141,9 +116,7 @@ class SignalBillingConfig(
      *   - projects (non-deleted)
      *   - domains (verified)
      *   - webhooks (active)
-     *   - daily email sends (from pre-aggregated usage table)
-     *   - active SMS senders (phone numbers with status 'active')
-     *   - daily SMS segments sent (for observability; enforcement uses Polar meters)
+     *   - daily and current-month email sends (from pre-aggregated usage table)
      */
     private val SQL_SIGNAL_USAGE =
         """
@@ -168,31 +141,26 @@ class SignalBillingConfig(
                 AND usage_date = (now() AT TIME ZONE 'UTC')::date
             ), 0)::int AS cnt
           ),
-          sms_senders_count AS (
-            SELECT COUNT(*)::int AS cnt FROM sms_senders
-            WHERE organization_id = ? AND status = 'active'
-          ),
-          daily_sms_segments AS (
-            SELECT COALESCE(SUM(segment_count), 0)::int AS cnt
-            FROM sms_messages
+          monthly_sends AS (
+            SELECT COALESCE(SUM(email_count), 0)::int AS cnt
+            FROM organization_usage_daily
             WHERE organization_id = ?
-              AND created_at >= (now() AT TIME ZONE 'UTC')::date
-              AND status NOT IN ('queued', 'scheduled')
+              AND usage_date >= date_trunc('month', now() AT TIME ZONE 'UTC')::date
+              AND usage_date <
+                (date_trunc('month', now() AT TIME ZONE 'UTC') + INTERVAL '1 month')::date
           )
         SELECT
           (SELECT cnt FROM projects_count)    AS "maxProjects",
           (SELECT cnt FROM domains_count)     AS "maxDomains",
           (SELECT cnt FROM webhooks_count)    AS "maxWebhooks",
           (SELECT cnt FROM daily_sends)       AS "dailySends",
-          (SELECT cnt FROM sms_senders_count) AS "smsSenders",
-          (SELECT cnt FROM daily_sms_segments) AS "dailySmsSegments"
+          (SELECT cnt FROM monthly_sends)     AS "monthlySends"
         """.trimIndent()
 
     // ─── Platform state data class ────────────────────────────────────────────
 
     private data class PlatformBillingState(
         val basePlanProductId: String?,
-        val smsPlanProductId: String?,
         val dedicatedIpQuantity: Int,
         val apiKeyCount: Int,
     )
@@ -235,10 +203,6 @@ class SignalBillingConfig(
                 add(APP_SLUG)
                 add(orgId)
                 addAll(basePlanProductIds)
-                // sms_plan CTE: app_slug, org_id, ...sms_product_ids
-                add(APP_SLUG)
-                add(orgId)
-                addAll(smsProductIds)
                 // dedicated_ip CTE: app_slug, org_id, product_id
                 add(APP_SLUG)
                 add(orgId)
@@ -252,11 +216,10 @@ class SignalBillingConfig(
                 .prepareAndQuery(sql, params) { rs ->
                     PlatformBillingState(
                         basePlanProductId = rs.getString("basePlanProductId"),
-                        smsPlanProductId = rs.getString("smsPlanProductId"),
                         dedicatedIpQuantity = rs.getInt("dedicatedIpQty"),
                         apiKeyCount = rs.getInt("apiKeyCount"),
                     )
-                }.firstOrNull() ?: PlatformBillingState(null, null, 0, 0)
+                }.firstOrNull() ?: PlatformBillingState(null, 0, 0)
         }
     }
 
@@ -278,16 +241,6 @@ class SignalBillingConfig(
         val baseConfig = plan.entitlements.toPlanFeatureConfig()
         val dedicatedIpsEnabled = isDedicatedIpEligibleForPlan(plan.slug) && state.dedicatedIpQuantity > 0
 
-        val smsFeatures =
-            if (state.smsPlanProductId != null) {
-                signalFindSmsPlanByProductId(state.smsPlanProductId)
-                    ?.entitlements
-                    ?.toFeatureMap()
-                    ?: SMS_NO_ADDON_ENTITLEMENTS.toFeatureMap()
-            } else {
-                SMS_NO_ADDON_ENTITLEMENTS.toFeatureMap()
-            }
-
         val planResolution =
             PlanResolution(
                 planId = plan.slug,
@@ -298,24 +251,22 @@ class SignalBillingConfig(
                                 mapOf(
                                     "multiRegion" to isMultiRegionAllowedForPlan(plan.slug),
                                     "dedicatedIps" to dedicatedIpsEnabled,
-                                ) +
-                                smsFeatures,
+                                ),
                     ),
             )
 
-        // ── 1 query: Signal DB (projects, domains, webhooks, daily sends, SMS senders) ────
+        // ── 1 query: Signal DB (projects, domains, webhooks, email sends) ─────
         val signalUsage =
             if (signalDb != null) {
                 signalDb.withConnection { conn ->
                     conn
-                        .prepareAndQuery(SQL_SIGNAL_USAGE, List(6) { orgId }) { rs ->
+                        .prepareAndQuery(SQL_SIGNAL_USAGE, List(5) { orgId }) { rs ->
                             mapOf(
                                 "maxProjects" to rs.getInt("maxProjects"),
                                 "maxDomains" to rs.getInt("maxDomains"),
                                 "maxWebhooks" to rs.getInt("maxWebhooks"),
                                 "dailySends" to rs.getInt("dailySends"),
-                                "smsSenders" to rs.getInt("smsSenders"),
-                                "dailySmsSegments" to rs.getInt("dailySmsSegments"),
+                                "monthlySends" to rs.getInt("monthlySends"),
                             )
                         }.firstOrNull() ?: emptyMap()
                 }
@@ -339,14 +290,12 @@ class SignalBillingConfig(
         val usage =
             dbUsage +
                 buildMap {
-                    meterBalance(SIGNAL_EMAIL_METER_ID)?.let { put("monthlySends", it) }
+                    meterBalance(SIGNAL_EMAIL_METER_ID)?.let { put("monthlySendsBalance", it) }
                     meterBalance(AppConfig.signal.emailReceivedMeterId)?.let {
                         put("inboundReceivedBalance", it)
                     }
                     meterBalance(SIGNAL_AUTOMATION_RUN_METER_ID)?.let { put("automationRunBalance", it) }
                     meterBalance(SIGNAL_AI_CREDIT_METER_ID)?.let { put("aiCreditBalance", it) }
-                    meterBalance(SIGNAL_SMS_SEGMENT_METER_ID)?.let { put("smsSegmentBalance", it) }
-                    meterBalance(SIGNAL_MMS_MESSAGE_METER_ID)?.let { put("mmsMessageBalance", it) }
                 }
 
         return PlanAndUsageResolution(plan = planResolution, usage = usage)

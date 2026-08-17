@@ -4,7 +4,7 @@ import com.apollodeploy.billing.feature.entitlements.application.EntitlementsSer
 import com.apollodeploy.billing.feature.entitlements.domain.EntitlementsResponse
 import com.apollodeploy.billing.feature.entitlements.domain.EntitlementsResult
 import com.apollodeploy.billing.support.billingTestApplication
-import com.apollodeploy.billing.support.noAuthInternalRoutes
+import com.apollodeploy.billing.support.machineAuthenticatedRoutes
 import com.apollodeploy.billing.support.validServiceToken
 import io.kotest.property.Arb
 import io.kotest.property.arbitrary.filter
@@ -32,7 +32,7 @@ class EntitlementsControllerTest {
     @Test
     fun `GET entitlements without Authorization header returns HTTP 401`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { entitlementsRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { entitlementsRoutes(controller) } },
         ) {
             val response = client.get("/internal/billing/entitlements/signal/org_1")
 
@@ -42,7 +42,7 @@ class EntitlementsControllerTest {
     @Test
     fun `GET entitlements Found returns HTTP 200 with all fields`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { entitlementsRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { entitlementsRoutes(controller) } },
         ) {
             coEvery { entitlementsService.getEntitlements("signal", "org_1") } returns
                 EntitlementsResult.Found(
@@ -76,7 +76,7 @@ class EntitlementsControllerTest {
     @Test
     fun `GET entitlements UnknownApp returns HTTP 404 with message field`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { entitlementsRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { entitlementsRoutes(controller) } },
         ) {
             coEvery { entitlementsService.getEntitlements("signal", "org_1") } returns
                 EntitlementsResult.UnknownApp("signal")
@@ -94,7 +94,7 @@ class EntitlementsControllerTest {
     @Test
     fun `GET entitlements NoSubscription returns HTTP 404 with billing_no_subscription code`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { entitlementsRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { entitlementsRoutes(controller) } },
         ) {
             coEvery { entitlementsService.getEntitlements("signal", "org_1") } returns
                 EntitlementsResult.NoSubscription
@@ -112,7 +112,7 @@ class EntitlementsControllerTest {
     @Test
     fun `GET entitlements InternalError returns HTTP 500`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { entitlementsRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { entitlementsRoutes(controller) } },
         ) {
             coEvery { entitlementsService.getEntitlements("signal", "org_1") } returns
                 EntitlementsResult.InternalError
@@ -154,7 +154,7 @@ class EntitlementsControllerTest {
                     )
 
                 billingTestApplication(
-                    routes = { noAuthInternalRoutes { entitlementsRoutes(controller) } },
+                    routes = { machineAuthenticatedRoutes { entitlementsRoutes(controller) } },
                 ) {
                     coEvery { entitlementsService.getEntitlements("signal", "org_1") } returns
                         EntitlementsResult.Found(stubResponse)

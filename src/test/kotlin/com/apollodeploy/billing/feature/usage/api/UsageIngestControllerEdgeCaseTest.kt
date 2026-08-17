@@ -3,7 +3,7 @@ package com.apollodeploy.billing.feature.usage.api
 import com.apollodeploy.billing.feature.usage.application.UsageIngestService
 import com.apollodeploy.billing.feature.usage.domain.UsageIngestResponse
 import com.apollodeploy.billing.support.billingTestApplication
-import com.apollodeploy.billing.support.noAuthInternalRoutes
+import com.apollodeploy.billing.support.machineAuthenticatedRoutes
 import com.apollodeploy.billing.support.validServiceToken
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -26,7 +26,7 @@ class UsageIngestControllerEdgeCaseTest {
     @Test
     fun `POST usage ingest with quantity 0 returns HTTP 200 or 202`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { usageIngestRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { usageIngestRoutes(controller) } },
         ) {
             coEvery { usageIngestService.ingest(any()) } returns UsageIngestResponse(accepted = true, reason = null)
 
@@ -47,7 +47,7 @@ class UsageIngestControllerEdgeCaseTest {
     @Test
     fun `POST usage ingest with blank orgId is not rejected at HTTP boundary`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { usageIngestRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { usageIngestRoutes(controller) } },
         ) {
             coEvery { usageIngestService.ingest(any()) } returns UsageIngestResponse(accepted = true, reason = null)
 
@@ -69,7 +69,7 @@ class UsageIngestControllerEdgeCaseTest {
     @Test
     fun `POST usage ingest missing eventKey returns HTTP 400`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { usageIngestRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { usageIngestRoutes(controller) } },
         ) {
             val response =
                 client.post("/internal/billing/usage/ingest") {
@@ -88,7 +88,7 @@ class UsageIngestControllerEdgeCaseTest {
     @Test
     fun `POST usage ingest missing orgId returns HTTP 400`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { usageIngestRoutes(controller) } },
+            routes = { machineAuthenticatedRoutes { usageIngestRoutes(controller) } },
         ) {
             val response =
                 client.post("/internal/billing/usage/ingest") {

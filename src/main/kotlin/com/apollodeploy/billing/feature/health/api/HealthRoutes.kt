@@ -1,7 +1,6 @@
 package com.apollodeploy.billing.feature.health.api
 
 import com.apollodeploy.billing.feature.health.domain.HealthResponse
-import com.apollodeploy.tesseract.sdk
 import io.github.smiley4.ktoropenapi.get
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.routing.Route
@@ -22,9 +21,5 @@ fun Route.healthRoutes(controller: HealthController) {
         }
     }) {
         controller.getHealth(call)
-    }.sdk {
-        operationId = "getHealth"
-        methodName = "getHealth"
-        response<HealthResponse>()
     }
 }

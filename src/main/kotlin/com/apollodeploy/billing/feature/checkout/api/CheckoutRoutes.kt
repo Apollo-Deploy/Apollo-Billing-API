@@ -3,8 +3,6 @@ package com.apollodeploy.billing.feature.checkout.api
 import com.apollodeploy.billing.feature.checkout.domain.CreateCheckoutRequest
 import com.apollodeploy.billing.feature.checkout.domain.CreateCheckoutResponse
 import com.apollodeploy.billing.feature.common.api.BillingApiErrorResponse
-import com.apollodeploy.tesseract.sdk
-import com.apollodeploy.tesseract.sdkDomain
 import io.github.smiley4.ktoropenapi.post
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.routing.Route
@@ -18,8 +16,6 @@ import io.ktor.server.routing.route
  * comes from the shared [AppRegistry].
  */
 fun Route.checkoutRoutes(controller: CheckoutController) {
-    sdkDomain("/internal/billing/checkout", "billingCheckout", stability = "internal")
-
     route("/internal/billing") {
         post("/checkout", {
             operationId = "createBillingCheckout"
@@ -60,12 +56,6 @@ fun Route.checkoutRoutes(controller: CheckoutController) {
             }
         }) {
             controller.createCheckout(call)
-        }.sdk {
-            operationId = "createBillingCheckout"
-            methodName = "createBillingCheckout"
-            internal = true
-            requestBody<CreateCheckoutRequest>()
-            response<CreateCheckoutResponse>()
         }
     }
 }

@@ -7,10 +7,16 @@ import io.ktor.server.application.Application
 import io.ktor.server.response.respondBytes
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 
 private val JsonContentType = ContentType.Application.Json
 
 private val HtmlContentType = ContentType.Text.Html
+
+private val OpenApiJson = Json
 
 /**
  * Serves the OpenAPI specification and Scalar API reference.
@@ -47,13 +53,36 @@ private class OpenApiSpecCache {
         }
     }
 
-    private fun generate(application: Application): ByteArray {
-        OpenApiPlugin.generateOpenApiSpecs(application)
+    private fun generate(application: Application): ByteArray =
+        generateOpenApiSpec(application).encodeToByteArray()
+}
 
-        return OpenApiPlugin
-            .getOpenApiSpec(OpenApiPluginConfig.DEFAULT_SPEC_ID)
-            .encodeToByteArray()
-    }
+internal fun generateOpenApiSpec(application: Application): String {
+    OpenApiPlugin.generateOpenApiSpecs(application)
+
+    return addSdkMetadata(
+        OpenApiPlugin.getOpenApiSpec(OpenApiPluginConfig.DEFAULT_SPEC_ID),
+    )
+}
+
+private fun addSdkMetadata(spec: String): String {
+    val document = OpenApiJson.parseToJsonElement(spec).jsonObject
+    val paths = document["paths"]?.jsonObject ?: return spec
+    val polarWebhook = paths["/webhooks/polar"]?.jsonObject ?: return spec
+    val operation = polarWebhook["post"]?.jsonObject ?: return spec
+    val decoratedOperation =
+        JsonObject(
+            operation +
+                (
+                    "x-tesseract" to
+                        JsonObject(mapOf("exclude" to JsonPrimitive(true)))
+                ),
+        )
+    val decoratedPath = JsonObject(polarWebhook + ("post" to decoratedOperation))
+
+    return OpenApiJson.encodeToString(
+        JsonObject(document + ("paths" to JsonObject(paths + ("/webhooks/polar" to decoratedPath)))),
+    )
 }
 
 // language=HTML

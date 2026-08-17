@@ -27,6 +27,12 @@ class InvoicesRepo(
         orgId: String,
         invoiceId: String,
     ): GenerateInvoiceResult {
+        val ownership = getOrderForOrg(orgId, invoiceId)
+        when {
+            ownership.statusCode == 404 -> return GenerateInvoiceResult.NotFound(invoiceId)
+            ownership.value == null -> return GenerateInvoiceResult.PolarUnavailable
+        }
+
         val result = polarClient.generateOrderInvoice(orgId, invoiceId)
         when {
             result.statusCode == 404 -> return GenerateInvoiceResult.NotFound(invoiceId)
@@ -52,21 +58,24 @@ class InvoicesRepo(
         const val INVOICE_URL_POLL_DELAY_MS = 500L
     }
 
-    suspend fun getInvoice(invoiceId: String): PolarCallResult<InvoiceItem> {
-        val result = polarClient.getOrder(invoiceId)
-        if (result.value == null) {
-            return PolarCallResult.failure(result.statusCode, result.errorBody ?: "Order not found")
-        }
-        return PolarCallResult.success(mapOrderToInvoice(result.value), result.statusCode ?: 200)
+    suspend fun getInvoice(
+        orgId: String,
+        invoiceId: String,
+    ): PolarCallResult<InvoiceItem> {
+        val result = getOrderForOrg(orgId, invoiceId)
+        val order = result.value
+            ?: return PolarCallResult.failure(result.statusCode, result.errorBody ?: "Order not found")
+        return PolarCallResult.success(mapOrderToInvoice(order), result.statusCode ?: 200)
     }
 
-    suspend fun getInvoiceMeterUsage(invoiceId: String): PolarCallResult<List<InvoiceMeterUsage>> {
-        val result = polarClient.getOrder(invoiceId)
+    suspend fun getInvoiceMeterUsage(
+        orgId: String,
+        invoiceId: String,
+    ): PolarCallResult<List<InvoiceMeterUsage>> {
+        val result = getOrderForOrg(orgId, invoiceId)
         val order = result.value
             ?: return PolarCallResult.failure(result.statusCode, result.errorBody ?: "Order not found")
 
-        val customerOrgId = order["customer"]?.jsonObject?.get("external_id")?.jsonPrimitive?.contentOrNull
-            ?: return PolarCallResult.success(emptyList(), result.statusCode ?: 200)
         val subscription = order["subscription"]?.jsonObject
             ?: return PolarCallResult.success(emptyList(), result.statusCode ?: 200)
         val periodStart = subscription["current_period_start"]?.jsonPrimitive?.contentOrNull
@@ -74,7 +83,7 @@ class InvoicesRepo(
         val periodEnd = subscription["current_period_end"]?.jsonPrimitive?.contentOrNull
             ?: return PolarCallResult.success(emptyList(), result.statusCode ?: 200)
 
-        val usage = polarClient.getInvoiceMeterUsage(customerOrgId, periodStart, periodEnd)
+        val usage = polarClient.getInvoiceMeterUsage(orgId, periodStart, periodEnd)
         return usage.value
             ?.map {
                 InvoiceMeterUsage(
@@ -89,6 +98,21 @@ class InvoicesRepo(
             }
             ?.let { PolarCallResult.success(it, usage.statusCode ?: 200) }
             ?: PolarCallResult.failure(usage.statusCode, usage.errorBody ?: "Meter usage unavailable")
+    }
+
+    private suspend fun getOrderForOrg(
+        orgId: String,
+        invoiceId: String,
+    ): PolarCallResult<JsonObject> {
+        val result = polarClient.getOrder(invoiceId)
+        val order = result.value
+            ?: return PolarCallResult.failure(result.statusCode, result.errorBody ?: "Order not found")
+        val orderOrgId =
+            order["customer"]?.jsonObject?.get("external_id")?.jsonPrimitive?.contentOrNull
+        if (orderOrgId != orgId) {
+            return PolarCallResult.failure(404, "Order not found")
+        }
+        return PolarCallResult.success(order, result.statusCode ?: 200)
     }
 
     suspend fun listInvoices(

@@ -174,7 +174,7 @@ class RedisPool private constructor(
         }
 
         /**
-         * Connection-free instance for manifest and SDK generation.
+         * Connection-free instance for offline OpenAPI export.
          */
         fun createStub(): RedisPool =
             unavailable

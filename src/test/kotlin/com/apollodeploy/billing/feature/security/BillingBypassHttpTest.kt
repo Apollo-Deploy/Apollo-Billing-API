@@ -10,7 +10,7 @@ import com.apollodeploy.billing.feature.usage.api.usageIngestRoutes
 import com.apollodeploy.billing.feature.usage.application.UsageIngestService
 import com.apollodeploy.billing.feature.usage.domain.UsageIngestResponse
 import com.apollodeploy.billing.support.billingTestApplication
-import com.apollodeploy.billing.support.noAuthInternalRoutes
+import com.apollodeploy.billing.support.machineAuthenticatedRoutes
 import com.apollodeploy.billing.support.validServiceToken
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -53,7 +53,7 @@ class BillingBypassHttpTest {
     @Test
     fun `quantity = 0 does not bill — rejected before reaching Polar`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { usageIngestRoutes(usageController) } },
+            routes = { machineAuthenticatedRoutes { usageIngestRoutes(usageController) } },
         ) {
             coEvery { usageService.ingest(any()) } returns UsageIngestResponse(accepted = false, reason = "quantity must be >= 1")
 
@@ -70,7 +70,7 @@ class BillingBypassHttpTest {
     @Test
     fun `negative quantity does not credit meter — rejected`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { usageIngestRoutes(usageController) } },
+            routes = { machineAuthenticatedRoutes { usageIngestRoutes(usageController) } },
         ) {
             coEvery { usageService.ingest(any()) } returns UsageIngestResponse(accepted = false, reason = "quantity must be >= 1")
 
@@ -87,7 +87,7 @@ class BillingBypassHttpTest {
     @Test
     fun `quantity = Int MAX_VALUE is rejected (exceeds 10000 cap)`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { usageIngestRoutes(usageController) } },
+            routes = { machineAuthenticatedRoutes { usageIngestRoutes(usageController) } },
         ) {
             coEvery { usageService.ingest(any()) } returns UsageIngestResponse(accepted = false, reason = "quantity exceeds maximum (10000)")
 
@@ -104,7 +104,7 @@ class BillingBypassHttpTest {
     @Test
     fun `quantity = 10001 (just over boundary) is rejected`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { usageIngestRoutes(usageController) } },
+            routes = { machineAuthenticatedRoutes { usageIngestRoutes(usageController) } },
         ) {
             coEvery { usageService.ingest(any()) } returns UsageIngestResponse(accepted = false, reason = "quantity exceeds maximum (10000)")
 
@@ -121,7 +121,7 @@ class BillingBypassHttpTest {
     @Test
     fun `quantity = 10000 (at boundary) is accepted`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { usageIngestRoutes(usageController) } },
+            routes = { machineAuthenticatedRoutes { usageIngestRoutes(usageController) } },
         ) {
             coEvery { usageService.ingest(any()) } returns UsageIngestResponse(accepted = true)
 
@@ -139,7 +139,7 @@ class BillingBypassHttpTest {
     @Test
     fun `blank orgId cannot be used to bypass per-org tracking`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { usageIngestRoutes(usageController) } },
+            routes = { machineAuthenticatedRoutes { usageIngestRoutes(usageController) } },
         ) {
             coEvery { usageService.ingest(any()) } returns UsageIngestResponse(accepted = false, reason = "orgId is required")
 
@@ -156,7 +156,7 @@ class BillingBypassHttpTest {
     @Test
     fun `whitespace-only orgId is treated as blank`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { usageIngestRoutes(usageController) } },
+            routes = { machineAuthenticatedRoutes { usageIngestRoutes(usageController) } },
         ) {
             coEvery { usageService.ingest(any()) } returns UsageIngestResponse(accepted = false, reason = "orgId is required")
 
@@ -174,7 +174,7 @@ class BillingBypassHttpTest {
     @Test
     fun `blank eventKey cannot route usage to wrong meter`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { usageIngestRoutes(usageController) } },
+            routes = { machineAuthenticatedRoutes { usageIngestRoutes(usageController) } },
         ) {
             coEvery { usageService.ingest(any()) } returns UsageIngestResponse(accepted = false, reason = "eventKey is required")
 
@@ -193,7 +193,7 @@ class BillingBypassHttpTest {
     @Test
     fun `enforce returns 503 when Signal DB is down (not 200 allowed)`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { enforceRoutes(enforceController) } },
+            routes = { machineAuthenticatedRoutes { enforceRoutes(enforceController) } },
         ) {
             coEvery { enforceService.enforce(any(), any()) } returns
                 EnforceResult.Rejected(
@@ -213,7 +213,7 @@ class BillingBypassHttpTest {
     @Test
     fun `meter check with depleted balance returns 402 not 200`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { enforceRoutes(enforceController) } },
+            routes = { machineAuthenticatedRoutes { enforceRoutes(enforceController) } },
         ) {
             coEvery { enforceService.enforce(any(), any()) } returns
                 EnforceResult.Rejected(
@@ -240,7 +240,7 @@ class BillingBypassHttpTest {
     @Test
     fun `unknown appSlug cannot be used to bypass enforcement`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { enforceRoutes(enforceController) } },
+            routes = { machineAuthenticatedRoutes { enforceRoutes(enforceController) } },
         ) {
             coEvery { enforceService.enforce(any(), any()) } returns
                 EnforceResult.Rejected(
@@ -262,7 +262,7 @@ class BillingBypassHttpTest {
     @Test
     fun `same idempotency key with different orgId does NOT cause cross-org dedup`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { usageIngestRoutes(usageController) } },
+            routes = { machineAuthenticatedRoutes { usageIngestRoutes(usageController) } },
         ) {
             // Both calls should reach the service (different org = different composite key)
             coEvery { usageService.ingest(any()) } returns UsageIngestResponse(accepted = true)
@@ -285,7 +285,7 @@ class BillingBypassHttpTest {
     @Test
     fun `same idempotency key with different eventKey does NOT dedup`() =
         billingTestApplication(
-            routes = { noAuthInternalRoutes { usageIngestRoutes(usageController) } },
+            routes = { machineAuthenticatedRoutes { usageIngestRoutes(usageController) } },
         ) {
             coEvery { usageService.ingest(any()) } returns UsageIngestResponse(accepted = true)
 
@@ -297,7 +297,7 @@ class BillingBypassHttpTest {
             client.post("/internal/billing/usage/ingest") {
                 header(HttpHeaders.Authorization, "Bearer ${validServiceToken()}")
                 contentType(ContentType.Application.Json)
-                setBody("""{"orgId":"org_1","eventKey":"sms.sent","quantity":1,"idempotencyKey":"key-1"}""")
+                setBody("""{"orgId":"org_1","eventKey":"email.sent","quantity":1,"idempotencyKey":"key-1"}""")
             }
 
             coVerify(exactly = 2) { usageService.ingest(any()) }
