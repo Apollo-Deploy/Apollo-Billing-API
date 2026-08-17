@@ -17,6 +17,7 @@ application {
 kotlin {
     jvmToolchain(21)
     compilerOptions {
+        allWarningsAsErrors.set(true)
         freeCompilerArgs.addAll("-Xjsr305=strict")
         optIn.set(
             listOf(
@@ -25,6 +26,10 @@ kotlin {
             ),
         )
     }
+}
+
+tasks.withType<JavaCompile>().configureEach {
+    options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
 }
 
 dependencies {
