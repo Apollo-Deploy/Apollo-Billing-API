@@ -10,7 +10,7 @@ object AppConfig {
     val port: Int = root.getInt("port")
     val requestBodyLimitBytes: Long = root.getLong("request-body-limit-bytes")
     val metricsEnabled: Boolean = root.getBoolean("metrics-enabled")
-    val corsOrigins: Set<String> = root.getStringSet("cors-origins")
+    val corsAllowedDomain: String = root.getString("cors-allowed-domain").trim()
 
     val polar: PolarConfig = root.getConfig("polar").toPolarConfig()
     val platform: PlatformConfig = root.getConfig("platform").toPlatformConfig()

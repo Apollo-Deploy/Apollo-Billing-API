@@ -22,6 +22,8 @@ import io.github.smiley4.ktoropenapi.config.AuthScheme
 import io.github.smiley4.ktoropenapi.config.AuthType
 import io.github.smiley4.ktoropenapi.config.OutputFormat
 import io.github.smiley4.ktoropenapi.config.SchemaGenerator
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
@@ -34,6 +36,7 @@ import io.ktor.server.plugins.ContentTransformationException
 import io.ktor.server.plugins.UnsupportedMediaTypeException
 import io.ktor.server.plugins.calllogging.CallLogging
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.server.plugins.cors.routing.CORS
 import io.ktor.server.plugins.ratelimit.RateLimit
 import io.ktor.server.plugins.ratelimit.RateLimitName
 import io.ktor.server.plugins.ratelimit.rateLimit
@@ -156,6 +159,32 @@ private fun Application.configure(assembly: AppAssembly) {
 }
 
 private fun Application.installCorePlugins() {
+    install(CORS) {
+        allowCredentials = true
+        allowHost(
+            AppConfig.corsAllowedDomain,
+            schemes = if (AppConfig.environment == "production") listOf("https") else listOf("http", "https"),
+            subDomains = listOf("*"),
+        )
+        listOf(
+            HttpMethod.Get,
+            HttpMethod.Post,
+            HttpMethod.Put,
+            HttpMethod.Delete,
+            HttpMethod.Patch,
+            HttpMethod.Options,
+        ).forEach(::allowMethod)
+        listOf(
+            HttpHeaders.ContentType,
+            HttpHeaders.Authorization,
+            HttpHeaders.CacheControl,
+            "X-Idempotency-Key",
+            "X-CSRF-Token",
+        ).forEach(::allowHeader)
+        exposeHeader("X-Request-Id")
+        maxAgeInSeconds = 86_400
+    }
+
     install(ContentNegotiation) {
         json(ApiJson)
     }
