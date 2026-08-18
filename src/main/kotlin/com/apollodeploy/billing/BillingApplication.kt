@@ -14,6 +14,7 @@ import com.apollodeploy.billing.feature.subscriptions.api.subscriptionsRoutes
 import com.apollodeploy.billing.feature.usage.api.usageIngestRoutes
 import com.apollodeploy.billing.feature.webhook.api.polarWebhookRoutes
 import com.apollodeploy.billing.infrastructure.config.AppConfig
+import com.apollodeploy.billing.infrastructure.config.allowConfiguredOrigins
 import com.apollodeploy.billing.infrastructure.validation.InvalidRedirectUrlException
 import com.apollodeploy.oauth.m2m.ktor.MachineOAuth
 import com.apollodeploy.oauth.m2m.ktor.machineAuthenticated
@@ -161,13 +162,9 @@ private fun Application.configure(assembly: AppAssembly) {
 private fun Application.installCorePlugins() {
     install(CORS) {
         allowCredentials = true
-        allowHost(
-            AppConfig.corsAllowedDomain,
-            schemes = if (AppConfig.environment == "production") listOf("https") else listOf("http", "https"),
-        )
-        allowHost(
-            "*.${AppConfig.corsAllowedDomain}",
-            schemes = if (AppConfig.environment == "production") listOf("https") else listOf("http", "https"),
+        allowConfiguredOrigins(
+            configuredOrigins = AppConfig.corsOrigins,
+            isProduction = AppConfig.environment == "production",
         )
         listOf(
             HttpMethod.Get,
