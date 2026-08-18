@@ -164,7 +164,10 @@ private fun Application.installCorePlugins() {
         allowHost(
             AppConfig.corsAllowedDomain,
             schemes = if (AppConfig.environment == "production") listOf("https") else listOf("http", "https"),
-            subDomains = listOf("*"),
+        )
+        allowHost(
+            "*.${AppConfig.corsAllowedDomain}",
+            schemes = if (AppConfig.environment == "production") listOf("https") else listOf("http", "https"),
         )
         listOf(
             HttpMethod.Get,
