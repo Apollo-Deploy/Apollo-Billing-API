@@ -77,7 +77,7 @@ val signalPlans: List<SignalPlan> =
     listOf(
         SignalPlan(
             slug = "signal-spark",
-            polarProductId = "5c1a055d-ca8d-4aba-a86a-e26dd07ee169",
+            polarProductId = "1d87f163-7a19-46ef-bcc9-fcdecc590328",
             name = "Spark",
             price = 0,
             currency = "usd",
@@ -107,7 +107,7 @@ val signalPlans: List<SignalPlan> =
         ),
         SignalPlan(
             slug = "signal-ignite",
-            polarProductId = "d0428f94-479b-4d7c-82df-0c103fdbcd5a",
+            polarProductId = "e2e08cb7-d6c6-4714-80ee-90d06f2f947f",
             name = "Ignite",
             price = 15,
             currency = "usd",
@@ -125,7 +125,7 @@ val signalPlans: List<SignalPlan> =
         ),
         SignalPlan(
             slug = "signal-growth",
-            polarProductId = "8e7ddadc-fefa-4be9-a114-b3645887cd94",
+            polarProductId = "d35f8fee-f8d8-40ef-b59c-f15c8302eef2",
             name = "Growth",
             price = 35,
             currency = "usd",
@@ -143,7 +143,7 @@ val signalPlans: List<SignalPlan> =
         ),
         SignalPlan(
             slug = "signal-pulse",
-            polarProductId = "4985c797-eeb1-4dbc-ab1f-3f84085bf17d",
+            polarProductId = "a68ea3fe-920d-4761-a974-12dd02b80be1",
             name = "Pulse",
             price = 65,
             currency = "usd",
@@ -162,7 +162,7 @@ val signalPlans: List<SignalPlan> =
         ),
         SignalPlan(
             slug = "signal-scale",
-            polarProductId = "acc82e9b-b3b2-44dc-8d5f-fe557495431e",
+            polarProductId = "fab7157b-b78d-4964-b842-6f3c56b890b9",
             name = "Scale",
             price = 180,
             currency = "usd",
@@ -181,7 +181,7 @@ val signalPlans: List<SignalPlan> =
         ),
         SignalPlan(
             slug = "signal-enterprise",
-            polarProductId = "97594229-5d62-4792-87c1-2db3edcb2870",
+            polarProductId = "b9f30f10-8571-40c8-a313-d9b7e9a32668",
             name = "Enterprise",
             price = 0,
             currency = "usd",
@@ -230,9 +230,9 @@ fun isDedicatedIpEligibleForPlan(planSlug: String): Boolean = planSlug !in DEDIC
 
 // ─── Polar meters and catalog products ────────────────────────────────────────
 
-const val SIGNAL_EMAIL_METER_ID = "7925de58-f234-46b2-bc05-97dabd8894a7"
-const val SIGNAL_AUTOMATION_RUN_METER_ID = "b28806bb-56e0-4c95-8f78-433140388632"
-const val SIGNAL_AI_CREDIT_METER_ID = "73419326-4df0-454f-b734-0c9eef1c492f"
+const val SIGNAL_EMAIL_METER_ID = "1a739828-a8e6-44a5-9f30-1b465d7f6e17"
+const val SIGNAL_AUTOMATION_RUN_METER_ID = "77d9835c-2210-4698-a9b8-a6b2375765c5"
+const val SIGNAL_AI_CREDIT_METER_ID = "cf687228-6399-46bd-9a5e-339ae167c965"
 
 /** Polar usage event name for accepted inbound email. */
 const val SIGNAL_EMAIL_RECEIVED_EVENT_KEY = "signal.email.received"
@@ -270,19 +270,19 @@ val signalAiCreditTopupPacks: List<AiCreditTopupPack> =
             slug = "signal-ai-credits-100",
             credits = 100,
             priceUsdCents = aiCreditPackPriceCents(100),
-            polarProductId = "34ffa465-6426-4fdd-a3af-7cc748f14306",
+            polarProductId = "8ebded7d-2d39-4e8a-ac55-7c510cd548e3",
         ),
         AiCreditTopupPack(
             slug = "signal-ai-credits-500",
             credits = 500,
             priceUsdCents = aiCreditPackPriceCents(500),
-            polarProductId = "78921976-e01c-48b2-baf1-02f2fa18ff35",
+            polarProductId = "8f1b5d77-4f3e-4451-aaf4-e7072ab3ea76",
         ),
         AiCreditTopupPack(
             slug = "signal-ai-credits-1000",
             credits = 1_000,
             priceUsdCents = aiCreditPackPriceCents(1_000),
-            polarProductId = "ea0bf43d-7984-4d86-9526-7867e8557dc6",
+            polarProductId = "7177f687-ecd1-4342-8e0e-2bc1df790575",
         ),
     )
 
@@ -296,7 +296,7 @@ fun findAiCreditTopupPackByProductId(polarProductId: String): AiCreditTopupPack?
 val signalDedicatedIpAddOn =
     SignalCatalogProduct(
         slug = "signal-dedicated-ip-addon",
-        polarProductId = "bd3abb23-826f-4559-a126-58ab27c905ad",
+        polarProductId = "a6b2a5b0-3dcb-4c84-a546-4b77b118e42b",
         name = "Dedicated IP",
         price = DEDICATED_IP_ADDON_PRICE_USD,
         currency = "usd",
@@ -309,7 +309,7 @@ val signalDedicatedIpAddOn =
 val signalEmailPayg =
     SignalCatalogProduct(
         slug = "signal-email-payg",
-        polarProductId = "65bfe1fb-3a49-4914-8652-ec9722b780d2",
+        polarProductId = "90b85fb4-3ef4-4107-acb0-07853b602811",
         name = "Email PAYG",
         price = 0,
         currency = "usd",
@@ -322,7 +322,7 @@ val signalEmailPayg =
 val signalAutomationPayg =
     SignalCatalogProduct(
         slug = "signal-automation-payg",
-        polarProductId = "b2e51ede-9970-453a-b587-89e571ff99c3",
+        polarProductId = "63401623-8f42-4d18-9165-3f8dcb522af6",
         name = "Automation PAYG",
         price = 0,
         currency = "usd",
@@ -336,7 +336,7 @@ val signalAutomationRunPacks: List<SignalCatalogProduct> =
     listOf(
         SignalCatalogProduct(
             slug = "signal-automation-small-pack",
-            polarProductId = "02b8a108-37b6-463e-b446-ed09f8f24547",
+            polarProductId = "fb5e018e-1647-4de1-8de4-3684cab4fecf",
             name = "Automation Small Pack",
             price = 10,
             currency = "usd",
@@ -344,7 +344,7 @@ val signalAutomationRunPacks: List<SignalCatalogProduct> =
         ),
         SignalCatalogProduct(
             slug = "signal-automation-medium-pack",
-            polarProductId = "c9e4bbb4-c591-4b5c-a1e4-28a6b1e67e25",
+            polarProductId = "e2924b7f-d52b-4eeb-aa4e-010f0303f723",
             name = "Automation Medium Pack",
             price = 30,
             currency = "usd",
@@ -352,7 +352,7 @@ val signalAutomationRunPacks: List<SignalCatalogProduct> =
         ),
         SignalCatalogProduct(
             slug = "signal-automation-growth-pack",
-            polarProductId = "4d861b42-de0f-445a-b037-8c0e0a76e69f",
+            polarProductId = "1f3349f5-6f76-42df-ac22-1b5f6a52b840",
             name = "Automation Growth Pack",
             price = 55,
             currency = "usd",
@@ -360,7 +360,7 @@ val signalAutomationRunPacks: List<SignalCatalogProduct> =
         ),
         SignalCatalogProduct(
             slug = "signal-automation-scale-pack",
-            polarProductId = "6e86fd52-c75a-41ef-aefc-69214d1f21e4",
+            polarProductId = "7b6908e0-96d9-41c3-a5ee-5cf9313819c5",
             name = "Automation Scale Pack",
             price = 200,
             currency = "usd",
